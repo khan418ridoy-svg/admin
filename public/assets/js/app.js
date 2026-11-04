@@ -48,7 +48,32 @@ function layout() {
     a.addEventListener('click', e => { e.preventDefault(); go(a.dataset.page); })
   );
   document.getElementById('logoutBtn').onclick = () => { stopNotifications(); localStorage.removeItem('nf-token'); location.reload(); };
-  document.getElementById('menuBtn').onclick = () => document.getElementById('sidebar').classList.toggle('open');
+  // ১. মেনু বাটনে ক্লিক করলে সাইডবার টগল হবে
+  document.getElementById('menuBtn').onclick = (e) => {
+    e.stopPropagation(); // ক্লিক ইভেন্ট যেন ডকুমেন্টে না ছড়ায়
+    document.getElementById('sidebar').classList.toggle('open');
+  };
+
+  // ২. মোবাইলে সাইডবারের বাইরে ক্লিক করলে সাইডবার বন্ধ হবে
+  document.addEventListener('click', (e) => {
+    const sidebar = document.getElementById('sidebar');
+    const menuBtn = document.getElementById('menuBtn');
+    if (sidebar && sidebar.classList.contains('open')) {
+      // যদি ক্লিক সাইডবারের ভেতরে বা মেনু বাটনে না লাগে
+      if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+        sidebar.classList.remove('open');
+      }
+    }
+  });
+
+  // ৩. সাইডবারের যেকোনো লিংকে ক্লিক করলে সাইডবার বন্ধ হবে (মোবাইলে)
+  document.querySelectorAll('[data-page]').forEach(a => {
+    a.addEventListener('click', () => {
+      if (window.innerWidth <= 700) {
+        document.getElementById('sidebar').classList.remove('open');
+      }
+    });
+  });
   document.getElementById('notifyBtn').onclick = toggleNotifications;
   updateNotificationButton();
   renderPage(current, document.getElementById('pageContent'), { api, toast });
