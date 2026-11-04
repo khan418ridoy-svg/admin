@@ -28,4 +28,19 @@ exports.text=(id,text)=>send(id,{text:String(text).slice(0,2000)});
 exports.quickReplies=(id,text,items)=>send(id,{text:String(text).slice(0,2000),quick_replies:items.slice(0,13).map(x=>({content_type:'text',title:String(x.title).slice(0,20),payload:String(x.payload).slice(0,1000)}))});
 exports.postbackButtons=(id,text,items)=>send(id,{attachment:{type:'template',payload:{template_type:'button',text:String(text).slice(0,640),buttons:items.slice(0,3).map(x=>({type:'postback',title:String(x.title).slice(0,20),payload:String(x.payload).slice(0,1000)}))}}});
 exports.generic=(id,elements)=>send(id,{attachment:{type:'template',payload:{template_type:'generic',elements:elements.slice(0,10).map(e=>({title:String(e.title||'Product').slice(0,80),subtitle:String(e.subtitle||'').slice(0,80),...(e.image_url?{image_url:e.image_url}:{}),buttons:(e.buttons||[]).slice(0,3).map(b=>b.type==='web_url'?{type:'web_url',url:b.url,title:String(b.title).slice(0,20)}:{type:'postback',title:String(b.title).slice(0,20),payload:String(b.payload).slice(0,1000)})}))}}});
-exports.senderAction=(id,action='typing_on')=>send(id,{sender_action:action});
+exports.senderAction = async (id, action = 'typing_on') => {
+  const token = await getToken();
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/me/messages?access_token=${encodeURIComponent(token)}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient: { id }, sender_action: action }),
+    signal: AbortSignal.timeout(12000)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.error('[messenger-senderAction-failed]', JSON.stringify(d));
+    throw new Error(d.error?.message || `meta_${r.status}`);
+  }
+  return d;
+};
