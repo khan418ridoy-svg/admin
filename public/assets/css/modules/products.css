@@ -1,0 +1,19 @@
+/* ============================================
+   PRODUCTS - Product table status dropdown
+   ============================================ */
+
+.product-status-select {
+  min-height: 38px;
+  min-width: 108px;
+  padding: 7px 10px;
+  border: 1px solid var(--line, #dfe3eb);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.product-status-select:disabled {
+  opacity: .6;
+  cursor: wait;
+}

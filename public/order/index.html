@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="bn">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Nishat Fashion · Order</title>
+    <link rel="stylesheet" href="/assets/css/admin.css">
+</head>
+
+<body>
+    <main class="login-wrap">
+        <section class="login-card">
+            <div class="brand">
+                <div class="brand-mark">NF</div>
+                <div><strong>Nishat Fashion</strong><small>Messenger order request</small></div>
+            </div>
+            <h1>অর্ডার ফর্ম</h1>
+            <p class="sub">আপনার তথ্য দিয়ে অর্ডার অনুরোধ পাঠান।</p>
+            <div class="notice">অর্ডার জমা হলে Pending থাকবে। আমাদের প্রতিনিধি ফোন করে নিশ্চিত করবেন।</div>
+            
+            <form id="orderForm">
+                <input type="hidden" name="psid" id="psid">
+                <div class="field"><label>আপনার নাম</label><input name="name" required></div>
+                <div class="field"><label>মোবাইল নম্বর</label><input name="phone" required placeholder="01XXXXXXXXX"></div>
+                <div class="field"><label>সম্পূর্ণ ঠিকানা</label><textarea name="address" required></textarea></div>
+                <div class="field"><label>জেলা</label><input name="district" required placeholder="Dhaka"></div>
+                <div class="field"><label>Product code</label><input name="code" required placeholder="SH101"></div>
+                <div class="field"><label>Variant SKU (Admin/product থেকে)</label><input name="variantSku" required></div>
+                <div class="field"><label>Color</label><input name="color" required></div>
+                <div class="field"><label>Size</label><input name="size" required></div>
+                <div class="field"><label>Quantity</label><input name="qty" type="number" min="1" max="5" value="1" required></div>
+                <div class="field"><label>Coupon Code (optional)</label><input name="couponCode" placeholder="যদি থাকে"></div>
+                <div class="field">
+                    <label>Payment Method</label>
+                    <select name="paymentMethod">
+                        <option value="cod">Cash on Delivery</option>
+                        <option value="bkash">bKash (gateway pending)</option>
+                        <option value="sslcommerz">Online Payment (gateway pending)</option>
+                    </select>
+                </div>
+                <button class="btn" style="width:100%">অর্ডার অনুরোধ পাঠান</button>
+                <p id="result" class="muted"></p>
+            </form>
+        </section>
+    </main>
+    
+    <script type="module" src="../assets/js/pages/order.js"></script>
+</body>
+
+</html>

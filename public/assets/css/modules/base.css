@@ -1,0 +1,47 @@
+/* ============================================
+   BASE - Variables, Reset, Typography
+   ============================================ */
+
+:root {
+  --bg: #f6f7fb;
+  --panel: #fff;
+  --ink: #172033;
+  --muted: #7b8497;
+  --line: #e8eaf0;
+  --primary: #6b55d9;
+  --primary-soft: #f0edff;
+  --green: #159b72;
+  --red: #d64d63;
+  --amber: #c58a24;
+  --shadow: 0 8px 28px #1720330a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px Inter, 'Hind Siliguri', sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.hidden {
+  display: none !important;
+}

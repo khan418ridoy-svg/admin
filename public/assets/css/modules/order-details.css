@@ -1,0 +1,139 @@
+/* ============================================
+   ORDER DETAILS - Modal & clickable order links
+   ============================================ */
+
+.order-details-link {
+  border: 0;
+  background: transparent;
+  color: var(--primary, #5f4bd8);
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.order-details-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(12, 20, 35, .58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  overflow: auto;
+}
+
+.order-details-modal {
+  background: #fff;
+  color: var(--ink, #172033);
+  width: min(900px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, .25);
+}
+
+.order-details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--line, #e5e8ef);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.order-details-head h2 {
+  margin: 0 0 5px;
+}
+
+.order-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.order-details-grid > section {
+  background: #f8f9fc;
+  border: 1px solid var(--line, #e5e8ef);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.order-details-grid p {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.order-details-modal h3 {
+  margin: 18px 0 10px;
+}
+
+.order-details-modal table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+}
+
+.order-details-totals {
+  max-width: 340px;
+  margin: 14px 0 14px auto;
+}
+
+.order-details-totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line, #e5e8ef);
+  padding: 7px 0;
+  margin: 0;
+}
+
+.order-details-totals .total {
+  font-size: 18px;
+  font-weight: 800;
+  border-bottom: 0;
+}
+
+.order-history {
+  padding-left: 22px;
+}
+
+.order-history li {
+  margin: 9px 0;
+}
+
+.order-history p {
+  margin: 4px 0;
+}
+
+@media (max-width: 600px) {
+  .order-details-overlay {
+    padding: 8px;
+    align-items: flex-end;
+  }
+
+  .order-details-modal {
+    padding: 15px;
+    max-height: 94dvh;
+    border-radius: 15px;
+  }
+
+  .order-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .order-details-head {
+    align-items: center;
+  }
+
+  .order-details-head h2 {
+    font-size: 18px;
+  }
+}

@@ -1,0 +1,63 @@
+/* ============================================
+   DASHBOARD - Recent Orders mobile card grid
+   ============================================ */
+
+@media (max-width: 768px) {
+  .grid.two-col > article:first-child .table-wrap {
+    overflow: visible;
+  }
+
+  .grid.two-col > article:first-child table {
+    display: block;
+    width: 100%;
+  }
+
+  .grid.two-col > article:first-child thead {
+    display: none;
+  }
+
+  .grid.two-col > article:first-child tbody {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .grid.two-col > article:first-child tr[data-order-row] {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #e5e9f2;
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, .04);
+  }
+
+  .grid.two-col > article:first-child td {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 5px;
+    border: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .grid.two-col > article:first-child td:nth-child(1),
+  .grid.two-col > article:first-child td:nth-child(7) {
+    grid-column: 1 / -1;
+  }
+
+  .grid.two-col > article:first-child td:nth-child(1)::before { content: "Order"; }
+  .grid.two-col > article:first-child td:nth-child(2)::before { content: "Customer"; }
+  .grid.two-col > article:first-child td:nth-child(3)::before { content: "Channel"; }
+  .grid.two-col > article:first-child td:nth-child(4)::before { content: "Total"; }
+  .grid.two-col > article:first-child td:nth-child(5)::before { content: "Status"; }
+  .grid.two-col > article:first-child td:nth-child(6)::before { content: "Verification"; }
+
+  .grid.two-col > article:first-child td::before {
+    color: #8490a5;
+    font-size: 11px;
+    font-weight: 600;
+  }
+}

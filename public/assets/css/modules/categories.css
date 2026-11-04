@@ -1,0 +1,133 @@
+/* ============================================
+   CATEGORIES - Taxonomy manager
+   ============================================ */
+
+.taxonomy-tree {
+  display: grid;
+  gap: 16px;
+}
+
+.taxonomy-collection {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 15px;
+  background: #fbfcfe;
+}
+
+.taxonomy-category {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+  margin: 10px 0;
+}
+
+.taxonomy-row,
+.taxonomy-subrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.taxonomy-row code,
+.taxonomy-subrow code {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: 5px;
+}
+
+.taxonomy-children {
+  padding-left: 18px;
+  margin-top: 12px;
+}
+
+.taxonomy-subchildren {
+  margin-top: 10px;
+  margin-left: 18px;
+  padding-left: 14px;
+  display: grid;
+  gap: 8px;
+  border-left: 2px solid #4f4d58;
+}
+
+.taxonomy-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.taxonomy-subrow:hover {
+  background: var(--primary-soft);
+  border-color: #d8d0ff;
+}
+
+.taxonomy-subrow code {
+  margin-left: 5px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #bdc0c8;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.taxonomy-subrow.is-disabled {
+  opacity: .55;
+  background: #cccfd9;
+}
+
+.taxonomy-subrow .toolbar {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.taxonomy-empty {
+  padding: 10px;
+  margin: 0;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.taxonomy-collection.is-disabled,
+.taxonomy-category.is-disabled,
+.taxonomy-subrow.is-disabled {
+  opacity: .62;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .taxonomy-children,
+  .taxonomy-subchildren {
+    padding-left: 9px;
+    margin-left: 7px;
+  }
+
+  .taxonomy-row {
+    align-items: flex-start;
+  }
+
+  .taxonomy-subrow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .taxonomy-subrow .toolbar {
+    width: 100%;
+  }
+
+  .taxonomy-subrow .toolbar .btn,
+  .toolbar.compact .btn {
+    flex: 1;
+  }
+
+  .toolbar.compact {
+    width: 100%;
+  }
+}

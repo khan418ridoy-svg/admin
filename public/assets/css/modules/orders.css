@@ -1,0 +1,68 @@
+/* ============================================
+   ORDERS - Order table & status controls
+   ============================================ */
+
+#ordersTable,
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+#ordersTable table {
+  min-width: 980px;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+#ordersTable th,
+#ordersTable td {
+  vertical-align: middle;
+  padding: 12px 10px;
+  white-space: normal;
+}
+
+.order-status-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 190px;
+  max-width: 260px;
+}
+
+.order-status-controls select,
+.order-status-controls textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.order-status-controls small {
+  display: block;
+  line-height: 1.4;
+  margin: 4px 0 8px;
+}
+
+.order-status-controls [data-failure-fields] {
+  padding: 9px;
+  border: 1px solid #f1c6c6;
+  border-radius: 9px;
+  background: #fff8f8;
+}
+
+.order-status-controls button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  #ordersTable table {
+    min-width: 900px;
+  }
+
+  .order-status-controls {
+    min-width: 190px;
+  }
+}

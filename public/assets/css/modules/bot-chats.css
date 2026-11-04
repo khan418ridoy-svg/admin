@@ -1,0 +1,135 @@
+/* ============================================
+   BOT CHATS - Chat layout, Inbox
+   ============================================ */
+
+/* ---- Chat layout ---- */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  min-height: 620px;
+}
+
+.chat-list {
+  border-right: 1px solid var(--line);
+  padding-right: 16px;
+}
+
+.chat-item {
+  padding: 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.chat-item.active,
+.chat-item:hover {
+  background: #f6f4ff;
+  border-color: #ebe7ff;
+}
+
+.chat-window {
+  padding-left: 20px;
+}
+
+.bubble {
+  max-width: 75%;
+  padding: 12px 14px;
+  border-radius: 13px;
+  margin: 10px 0;
+  background: #f1f2f6;
+  line-height: 1.6;
+}
+
+.bubble.admin {
+  margin-left: auto;
+  background: #eeeaff;
+}
+
+/* ---- Inbox ---- */
+.inbox-card {
+  margin-bottom: 24px;
+}
+
+.inbox-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inbox-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line, #e3e6ee);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.inbox-message.ai-replied {
+  border: 2px solid #16a34a;
+  background: #f5fff8;
+}
+
+.inbox-message.flagged {
+  border: 2px solid #d97706;
+  background: #fffbeb;
+}
+
+.inbox-message-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inbox-meta span {
+  font-size: 12px;
+  color: var(--muted, #778096);
+}
+
+.inbox-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0;
+}
+
+.inbox-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inbox-toolbar {
+  justify-content: space-between;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 700px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-list {
+    border: 0;
+    padding: 0;
+  }
+
+  .chat-window {
+    padding: 18px 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .inbox-message {
+    flex-wrap: wrap;
+  }
+
+  .inbox-actions {
+    width: 100%;
+  }
+}
