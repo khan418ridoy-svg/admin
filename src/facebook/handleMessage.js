@@ -20,7 +20,7 @@ const ms=v=>{
 };
 const fmtDate=t=>t?new Date(t).toLocaleDateString('en-GB',{timeZone:'Asia/Dhaka',day:'2-digit',month:'short',year:'numeric'}):'';
 
-/* ---------- Intent matchers (text typed by customer) ---------- */
+/* ---------- Intent matchers ---------- */
 const HOME_RE=/^(menu|home|main menu|start|মেনু|হোম|মেইন মেনু|প্রথম পেজ|প্রথম পেইজ|হোম পেজ|শুরু)$/i;
 const ORDERS_RE=/(my|amar|amr)\s*orders?\b|orders?\s*(status|track\w*|kothay|kothai)|track\s*(my\s*)?order|আমার\s*অর্ডার|অর্ডার\s*(স্ট্যাটাস|কোথায়|ট্র্যাক\w*|জানতে|দেখ\w*|কী\s*হলো|কি\s*হলো|এর\s*অবস্থা)|অর্ডারের\s*(অবস্থা|খবর|স্ট্যাটাস|তথ্য)/i;
 const NEW_RE=/new\s*(product|arrival|collection|item)s?|latest\s*(product|collection)|notun\s*(product|collection)|নতুন\s*(পণ্য|প্রডাক্ট|প্রোডাক্ট|কালেকশন|আইটেম)|নতুন\s*(কী|কি)\s*(এসেছে|আছে)|নতুন\s*এসেছে/i;
@@ -52,13 +52,11 @@ async function sendAndLog(psid,conv,text,kind='assistant'){
 }
 async function sendOptions(psid,text,opts){return msgr.quickReplies(psid,text,opts.slice(0,10));}
 
-/* Always-available navigation row shown under cards/lists */
 const NAV=[
  {title:'🏠 Home',payload:'MENU|HOME'},
  {title:'🛒 Cart',payload:'CART|SHOW'},
  {title:'📦 আমার অর্ডার',payload:'MENU|ORDERS'}
 ];
-/* Messenger button-template text is limited to 640 chars; split long text so nothing is cut off */
 async function sendWithButtons(psid,text,buttons){
  if(String(text).length<=620)return msgr.postbackButtons(psid,text,buttons);
  await msgr.text(psid,text);
@@ -124,7 +122,6 @@ async function sendSearchPage(psid,conv,offset=0){
 }
 
 /* ---------- New arrivals ---------- */
-/* ADAPTER: if services/catalog/search exports newArrivals(limit) it is used; otherwise newest products are collected from categories. */
 async function getNewArrivals(limit=10){
  if(typeof catalog.newArrivals==='function')return catalog.newArrivals(limit);
  const cats=await catalog.categories();const seen=new Map();
@@ -148,7 +145,6 @@ async function sendNewArrivals(psid){
 /* ---------- My orders ---------- */
 const STATUS={pending:'⏳ Pending — যাচাই চলছে',confirmed:'✅ Confirmed',processing:'🧵 Processing',packed:'📦 Packed',shipped:'🚚 Shipped',out_for_delivery:'🛵 Delivery-র পথে',delivered:'🎉 Delivered',completed:'🎉 Completed',cancelled:'❌ Cancelled',canceled:'❌ Cancelled',returned:'↩️ Returned'};
 const statusLabel=s=>STATUS[String(s||'pending').toLowerCase().replace(/[\s-]+/g,'_')]||String(s||'Pending');
-/* ADAPTER: assumes createOrder stores the Messenger PSID in orders.conversationId. Change the field/collection here if different. */
 async function getCustomerOrders(psid,conv){
  const map=new Map();
  try{
@@ -301,7 +297,7 @@ async function handleCheckoutInput(psid,text,conv){
   try{
    const categories=flattenCategories(await catalog.categories());
    await msgr.senderAction(psid,'typing_on');
-   const result=await chain.reply([{role:'system',content:prompts.system([],categories,conv.customerName||'')},...history,{role:'user',content:raw}]);
+   const result=await chain.reply([{role:'system',content:prompts.system([],categories,conv.profileName||'')},...history,{role:'user',content:raw}]);
    await msgr.quickReplies(psid,`${result.text}\n\nCheckout চালিয়ে যেতে আগের তথ্য দিন, অথবা বাতিল করুন।`,[
     ...(step==='name'?[]:[{title:'⬅️ Back',payload:'ORDER|BACK'}]),
     {title:'❌ Cancel / Exit',payload:'ORDER|CANCEL'}
@@ -343,6 +339,7 @@ async function handleCheckoutInput(psid,text,conv){
 async function handle({psid,text,payload,mid,senderName=''}){
  const ref=db.doc(`conversations/${psid}`),snap=await ref.get();
  const conv=snap.data()||{messages:[],cart:[]};conv.messages=conv.messages||[];conv.cart=conv.cart||[];if(senderName&&!conv.profileName)conv.profileName=senderName;
+ 
  const blocked=await db.doc(`blocked/${psid}`).get();if(blocked.exists||conv.humanActive)return;
  const envEnabled=String(process.env.BOT_ENABLED||'').toLowerCase();
  const cfg=(await db.doc('meta/botConfig').get()).data()||{};
@@ -492,7 +489,7 @@ async function handle({psid,text,payload,mid,senderName=''}){
  try{
   const categories=flattenCategories(await catalog.categories());
   await msgr.senderAction(psid,'typing_on');
-  const result=await chain.reply([{role:'system',content:prompts.system(found,categories,conv.customerName||'')},...history,{role:'user',content:content}]);
+  const result=await chain.reply([{role:'system',content:prompts.system(found,categories,conv.profileName||'')},...history,{role:'user',content:content}]);
   await sendAndLog(psid,conv,result.text,'ai_reply');
  }catch(e){
   await saveConversation(ref,conv,{needsAttention:true,lastError:e.message});
