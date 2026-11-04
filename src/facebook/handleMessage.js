@@ -265,7 +265,7 @@ async function finishOrder(psid,conv){
   console.error('[order-create-failed]',psid,e.message);
   conv.checkout.step='confirm';
   await saveConversation(db.doc(`conversations/${psid}`),conv,{needsAttention:true,lastError:e.message});
-  return msgr.text(psid,'দুঃখিত, এই মুহূর্তে অর্ডারটি সম্পন্ন করা যায়নি। আমাদের প্রতিনিধিকে জানানো হয়েছে, শীঘ্রই যোগাযোগ করা হবে।');
+  return msgr.text(psid,'দুঃখিত, এই মুহূর্তে অর্ডারটি সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।');
  }
  const itemLines=(conv.cart||[]).map((x,i)=>`${i+1}. ${x.name} (${x.color||'—'}/${x.size||'—'}) × ${x.qty} = ${taka(Number(x.unitPrice||0)*Number(x.qty||0))}`).join('\n');
  const msg=`🎉 ধন্যবাদ ${c.name}! আপনার অর্ডার ${order.orderNo} গ্রহণ করা হয়েছে।\n\nঅর্ডারের বিবরণ:\n${itemLines}\n\nSubtotal: ${taka(order.subtotal||conv.cart.reduce((n,x)=>n+x.unitPrice*x.qty,0))}\nDelivery Charge: ${taka(order.deliveryCharge||0)}\nDiscount: ${taka(order.discount||0)}\nTotal Payable: ${taka(order.total||0)}\n\nVerification: ${verification.verdict==='ok'?'প্রাথমিকভাবে যাচাইকৃত':'Admin Review প্রয়োজন'}\nOrder Status: Pending\nআমাদের প্রতিনিধি প্রয়োজনীয় যাচাই শেষে আপনার অর্ডার Confirm করবেন।`;
@@ -353,14 +353,9 @@ async function handle({psid,text,payload,mid,senderName=''}){
   await inbox(psid,mid||`m_${Date.now()}`,'incoming',content,{receivedAt:Date.now(),senderName:conv.profileName||senderName||''});
   await ref.set({lastInboundAt:conv.lastInboundAt,updatedAt:Date.now()},{merge:true});
  }
- if(content&&/\b(refund|complaint|human|admin|agent|representative)\b|ফেরত|অভিযোগ|মানুষের সাথে|এডমিন/i.test(content)){
-  await inbox(psid,mid||`m_${Date.now()}`,'human_handoff',content,{flagged:true,flagReason:'human_requested'});
-  const handoffReply='আপনার অনুরোধটি আমাদের প্রতিনিধির কাছে পাঠানো হয়েছে। আমাদের প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন।';
-  conv.messages=[...conv.messages,{role:'assistant',content:handoffReply,source:'human_handoff',at:Date.now()}].slice(-HISTORY_LIMIT);
-  await saveConversation(ref,conv,{humanActive:true,needsAttention:true,humanRequestedAt:Date.now(),humanRequestReason:'customer_requested'});
-  await inbox(psid,`handoff_${Date.now()}`,'human_handoff_notice',handoffReply,{senderName:conv.profileName||''});
-  return msgr.text(psid,handoffReply);
- }
+ 
+ // অ্যাডমিন সাপোর্ট বা Human Handoff এর অংশটি বাদ দেওয়া হয়েছে
+ 
  if(content&&badLanguage(content)){
   await inbox(psid,mid||`m_${Date.now()}`,'incoming',content,{flagged:true,flagReason:'bad_language'});await saveConversation(ref,conv,{needsAttention:true,moderation:{reason:'bad_language',at:Date.now()}});
   return msgr.text(psid,'আপনার Message-টি আমাদের টিম Review করবে। অনুগ্রহ করে ভদ্র ভাষায় লিখুন।');
