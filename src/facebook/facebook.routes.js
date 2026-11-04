@@ -7,6 +7,35 @@ const { GRAPH_VERSION } = require('../config/settings');
 
 const graph = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const scopes = (process.env.META_SCOPES || 'pages_show_list,pages_manage_metadata,pages_messaging,pages_read_engagement').split(',').map(x => x.trim()).filter(Boolean).join(',');
+// Sets the Messenger "Get Started" button and the always-visible persistent menu (Home / New products / My orders / Cart).
+async function setupMessengerProfile(token) {
+  const site = (process.env.SITE_URL || '').replace(/\/$/, '');
+  const menu = [
+    { type: 'postback', title: '🏠 হোম', payload: 'MENU|HOME' },
+    { type: 'postback', title: '🆕 নতুন পণ্য', payload: 'MENU|NEW' },
+    { type: 'postback', title: '📦 আমার অর্ডার', payload: 'MENU|ORDERS' },
+    { type: 'postback', title: '🛒 আমার Cart', payload: 'CART|SHOW' },
+    ...(/^https:\/\//i.test(site) ? [{ type: 'web_url', title: '🌐 ওয়েবসাইট', url: site }] : [])
+  ];
+  try {
+    const r = await fetch(`${graph}/me/messenger_profile?access_token=${encodeURIComponent(token)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        get_started: { payload: 'GET_STARTED' },
+        persistent_menu: [{ locale: 'default', composer_input_disabled: false, call_to_actions: menu }]
+      })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) {
+      console.error('[facebook] messenger_profile setup failed', d.error?.message || r.status);
+      return { ok: false, error: d.error?.message || `Meta API ${r.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('[facebook] messenger_profile setup error', e.message);
+    return { ok: false, error: e.message };
+  }
+}
 const callbackUrl = () => `${(process.env.SITE_URL || '').replace(/\/$/, '')}/api/facebook/callback`;
 
 router.get('/start', adminAuth, asyncHandler(async (req, res) => {
@@ -93,7 +122,17 @@ router.post('/select-page', adminAuth, asyncHandler(async (req, res) => {
     webhookSubscribed: true, webhookSubscribedFields: ['messages', 'messaging_postbacks'], updatedAt: Date.now()
   });
   console.log(`[facebook] Active Messenger Page selected: ${page.name} (${page.id}); webhook subscribed.`);
-  res.json({ ok: true, page: { id: page.id, name: page.name }, webhookSubscribed: true });
+  const profile = await setupMessengerProfile(page.accessToken);
+  res.json({ ok: true, page: { id: page.id, name: page.name }, webhookSubscribed: true, menuConfigured: profile.ok, menuError: profile.error });
+}));
+
+// Re-apply Get Started + persistent menu to the currently selected Page (use after changing menu items).
+router.post('/setup-menu', adminAuth, asyncHandler(async (req, res) => {
+  const active = await db.doc('meta/privateFacebook').get();
+  if (!active.exists || !active.data().pageAccessToken) return res.status(400).json({ error: 'Select a Facebook Page first.' });
+  const profile = await setupMessengerProfile(active.data().pageAccessToken);
+  if (!profile.ok) return res.status(502).json({ error: 'Could not configure Messenger menu.', details: profile.error });
+  res.json({ ok: true });
 }));
 
 router.post('/disconnect', adminAuth, asyncHandler(async (req, res) => {

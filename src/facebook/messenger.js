@@ -1,20 +1,24 @@
 const {GRAPH_VERSION}=require('../config/settings');
-async function send(psid,message){
+let tokenCache={token:null,at:0};
+async function getToken(){
+ if(tokenCache.token&&Date.now()-tokenCache.at<60000)return tokenCache.token;
  const {db}=require('../config/firebase');
  const active=await db.doc('meta/privateFacebook').get();
  const token=active.exists?active.data().pageAccessToken:process.env.META_PAGE_TOKEN;
  if(!token)throw new Error('meta_page_token_missing_connect_facebook_in_admin');
+ tokenCache={token,at:Date.now()};
+ return token;
+}
+async function send(psid,message){
+ const token=await getToken();
  const url=`https://graph.facebook.com/${GRAPH_VERSION}/me/messages?access_token=${encodeURIComponent(token)}`;
  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({recipient:{id:psid},messaging_type:'RESPONSE',message}),signal:AbortSignal.timeout(12000)});
  const d=await r.json().catch(()=>({}));
- if(!r.ok){const err=new Error(d.error?.message||`meta_${r.status}`);err.status=r.status;err.metaCode=d.error?.code;err.metaSubcode=d.error?.error_subcode;err.psid=psid;console.error('[messenger-send-failed]',JSON.stringify({status:r.status,code:err.metaCode,subcode:err.metaSubcode,message:err.message,psid}));throw err;}
+ if(!r.ok){const err=new Error(d.error?.message||`meta_${r.status}`);err.status=r.status;err.metaCode=d.error?.code;err.metaSubcode=d.error?.error_subcode;err.psid=psid;if(err.metaCode===190)tokenCache={token:null,at:0};console.error('[messenger-send-failed]',JSON.stringify({status:r.status,code:err.metaCode,subcode:err.metaSubcode,message:err.message,psid}));throw err;}
  return d;
 }
 exports.getProfile=async psid=>{
- const {db}=require('../config/firebase');
- const active=await db.doc('meta/privateFacebook').get();
- const token=active.exists?active.data().pageAccessToken:process.env.META_PAGE_TOKEN;
- if(!token)throw new Error('meta_page_token_missing_connect_facebook_in_admin');
+ const token=await getToken();
  const url=`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(psid)}?fields=name&access_token=${encodeURIComponent(token)}`;
  const r=await fetch(url,{signal:AbortSignal.timeout(8000)}); const d=await r.json().catch(()=>({}));
  if(!r.ok)throw new Error(d.error?.message||`meta_profile_${r.status}`);
