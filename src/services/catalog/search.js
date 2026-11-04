@@ -1,7 +1,14 @@
 const cache = require('./productCache');
 
 const BANGLA_DIGITS = '০১২৩৪৫৬৭৮৯';
-const norm = value => String(value ?? '').normalize('NFKC').replace(/[০-৯]/g, d => String(BANGLA_DIGITS.indexOf(d))).toLowerCase().replace(/[৳]/g, ' ').replace(/[^\p{L}\p{N}\p{M}.]+/gu, ' ').replace(/\s+/g, ' ').trim();
+const norm = value => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/[০-৯]/g, d => String(BANGLA_DIGITS.indexOf(d)))
+  .toLowerCase()
+  .replace(/[৳]/g, ' ')
+  .replace(/[^\p{L}\p{N}\p{M}.]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 const tokens = value => norm(value).split(' ').filter(Boolean);
 
 const SYNONYMS = [
@@ -76,7 +83,13 @@ function productFields(p) {
     code: norm([p.shortCode, p.sku, p.id].join(' ')),
     category: norm(paths.map(x => [x.collectionName, x.categoryName, x.subCategoryName].join(' ')).join(' ')),
     tags: norm([...(p.tags || []), ...(p.searchKeywords || []), ...(p.keywords || [])].join(' ')),
-    attrs: norm([p.brand, p.collectionName, p.subCategoryName, p.categoryName, p.fabricType, p.fabric, p.fit, p.sleeveType, p.description, p.shortDescription, ...(p.availableColors || p.colors || []), ...(p.availableSizes || p.sizes || []), ...variants.flatMap(v => [v.color, v.size, v.variantSku, v.fabricType, v.fit, v.sleeveType])].join(' '))
+    attrs: norm([
+      p.brand, p.collectionName, p.subCategoryName, p.categoryName,
+      p.fabricType, p.fabric, p.fit, p.sleeveType, p.description,
+      p.shortDescription, ...(p.availableColors || p.colors || []),
+      ...(p.availableSizes || p.sizes || []),
+      ...variants.flatMap(v => [v.color, v.size, v.variantSku, v.fabricType, v.fit, v.sleeveType])
+    ].join(' '))
   };
 }
 function scoreProduct(p, query) {
@@ -115,13 +128,18 @@ function exactCodeMatch(p, q) {
   if (norm(p.shortCode) === code) return true;
   if (norm(p.sku) === code) return true;
   if (norm(p.id) === code) return true;
-  return Object.entries(p.variants || {}).some(([sku, v]) => norm(sku) === code || norm(v?.variantSku) === code);
+  return Object.entries(p.variants || {}).some(([sku, v]) =>
+    norm(sku) === code || norm(v?.variantSku) === code
+  );
 }
-function activeProducts(items) { return items.filter(p => String(p.status || '').toLowerCase() === 'active'); }
+function activeProducts(items) {
+  return items.filter(p => String(p.status || '').toLowerCase() === 'active');
+}
 exports.search = async (text, options = {}) => {
   const q = norm(text);
   if (!q) return { items: [], exactCode: false, priceFilter: null };
   const items = activeProducts(await cache.getProducts());
+
   if (isCodeLike(q) || items.some(p => exactCodeMatch(p, q))) {
     const exact = items.filter(p => norm(p.shortCode) === q);
     if (exact.length) return { items: exact.slice(0, options.limit || 50), exactCode: true, priceFilter: null };
@@ -132,8 +150,13 @@ exports.search = async (text, options = {}) => {
     const idMatches = items.filter(p => norm(p.id) === q);
     return { items: idMatches.slice(0, options.limit || 50), exactCode: true, priceFilter: null };
   }
+
   const priceFilter = parsePrice(text);
-  const scored = items.filter(p => matchesPrice(p, priceFilter)).map(p => ({ p, score: scoreProduct(p, text) })).filter(x => x.score >= 12).sort((a, b) => b.score - a.score || Number(b.p.totalStock || 0) - Number(a.p.totalStock || 0));
+  const scored = items
+    .filter(p => matchesPrice(p, priceFilter))
+    .map(p => ({ p, score: scoreProduct(p, text) }))
+    .filter(x => x.score >= 12)
+    .sort((a, b) => b.score - a.score || Number(b.p.totalStock || 0) - Number(a.p.totalStock || 0));
   return { items: scored.slice(0, options.limit || 50).map(x => x.p), exactCode: false, priceFilter };
 };
 exports.findProducts = async text => (await exports.search(text)).items;
@@ -150,9 +173,16 @@ exports.getByCode = async code => {
 exports.getById = id => cache.getById(id);
 exports.normalizeQuery = norm;
 exports.parsePrice = parsePrice;
+
+// এখানে সাধারণ কথাবার্তার শব্দগুলো বাদ দেওয়া হয়েছে
 exports.isProductSearchIntent = text => {
   const q = norm(text);
   if (parsePrice(text)) return true;
+  
+  const ignoreWords = ['sir', 'madam', 'hi', 'hello', 'hey', 'vai', 'vaiya', 'apu', 'salam', 'assalamu', 'kemon', 'achen', 'ase', 'ki', 'kisu'];
+  if (ignoreWords.includes(q)) return false;
+
   if (SYNONYMS.some(([canonical, variants]) => q.includes(norm(canonical)) || variants.some(v => q.includes(norm(v))))) return true;
+  
   return /fabric|fit|sleeve|color|colour|size|collection|category|product|পণ্য|কালার|রং|সাইজ|দাম|স্টক/.test(q);
 };
