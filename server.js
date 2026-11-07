@@ -48,6 +48,7 @@ app.use('/api/dashboard', require('./src/api/dashboard.routes'));
 app.use('/api/orders', require('./src/api/order.routes'));
 app.use('/api/order-form', require('./src/api/orderForm.routes'));
 app.use('/api/products', require('./src/api/product.routes'));
+app.use('/api/lots', require('./src/api/lot.routes'));
 app.use('/api/settings', require('./src/api/settings.routes'));
 
 // Facebook OAuth & Settings Routes
