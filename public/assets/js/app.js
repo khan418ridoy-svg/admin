@@ -5,6 +5,7 @@ import { renderPage } from './pages/index.js';
 const nav = [
   ['dashboard', '▦', 'Dashboard'],
   ['products', '▣', 'Products'],
+  ['lots', '📦', 'Lots'],
   ['categories', '◫', 'Categories'],
   ['orders', '▤', 'Orders'],
   ['bot-chats', '◉', 'Bot Chats'],
