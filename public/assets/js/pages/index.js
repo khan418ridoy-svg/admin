@@ -10,10 +10,14 @@ import { renderSettings } from './settings.js';
 import { renderFacebookSettings } from './facebook-settings.js';
 import { renderAiSettings } from './ai-settings.js';
 import { head, esc } from '../helpers.js';
+import { renderLots } from './lots.js';
+// ...
+
 
 const pages = {
   dashboard: renderDashboard,
   products: renderProducts,
+  lots: renderLots,
   categories: renderCategories,
   orders: renderOrders,
   'low-stock': renderLowStock,

@@ -12,6 +12,11 @@ export async function productEditor(root, api, toast, id) {
   const content = root.querySelector('#pageContent') || root;
   const tx = await api('/api/categories');
   const collections = (tx.collections || []).filter(c => c.active !== false);
+  
+  // ১. লট লিস্ট নিয়ে আসা
+  const lotsData = await api('/api/lots');
+  const lots = lotsData.items || [];
+
   const paths = Array.isArray(item.categoryPaths) && item.categoryPaths.length
     ? item.categoryPaths
     : (item.collectionId ? [{ collectionId: item.collectionId, categoryId: item.categoryId, subCategoryId: item.subCategoryId || null }] : []);
@@ -72,6 +77,15 @@ export async function productEditor(root, api, toast, id) {
         ${field('Product SKU *', 'sku', item.sku, 'text', 'required')}
         ${field('Product code (auto generated)', 'shortCode', item.shortCode, 'text', 'readonly placeholder="First save-এর পর তৈরি হবে"')}
         ${field('Brand *', 'brand', item.brand || 'Nishat Fashion', 'text', 'required')}
+        
+        <!-- লট সিলেক্ট ড্রপডাউন -->
+        <div class="field"><label>Assign to Lot (Optional)</label>
+          <select name="lotId">
+            <option value="">General Stock (No Lot)</option>
+            ${lots.map(l => `<option value="${esc(l.id)}" ${item.lotId === l.id ? 'selected' : ''}>${esc(l.lotNo)}</option>`).join('')}
+          </select>
+        </div>
+
         <div class="field"><label>Status *</label><select name="status">
           <option value="draft" ${item.status === 'draft' || !item.status ? 'selected' : ''}>Draft</option>
           <option value="active" ${item.status === 'active' ? 'selected' : ''}>Active</option>
@@ -355,16 +369,17 @@ export async function productEditor(root, api, toast, id) {
     form.elements.hoverImage.value = images[1]?.url || '';
   });
 
+  
   form.querySelector('#uploadImages').onclick = async () => {
     if (!selectedImageFiles.length) return toast('আগে image select করুন');
-    if (!id) return toast('আগে Product Save করে Draft ID তৈরি করুন, তারপর ছবি upload করুন');
     const b = form.querySelector('#uploadImages');
     b.disabled = true;
     b.textContent = 'Uploading…';
     let uploaded = 0;
     try {
       for (const file of selectedImageFiles) {
-        const sig = await api('/api/products/cloudinary-signature', { method: 'POST', body: JSON.stringify({ productId: id }) });
+        const tempId = id || `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const sig = await api('/api/products/cloudinary-signature', { method: 'POST', body: JSON.stringify({ productId: tempId }) });
         const fd = new FormData();
         fd.append('file', file);
         fd.append('api_key', sig.apiKey);
@@ -383,7 +398,7 @@ export async function productEditor(root, api, toast, id) {
       selectedImageFiles = [];
       form.querySelector('#imageFiles').value = '';
       renderSelectedPreviews();
-      toast(`${uploaded} image uploaded: 1st = Main, 2nd = Hover, rest = Gallery`);
+      toast(`${uploaded} image uploaded successfully!`);
     } catch (e) {
       toast(`Image upload failed: ${e.message}`);
     } finally {
@@ -391,6 +406,7 @@ export async function productEditor(root, api, toast, id) {
       b.textContent = 'Upload to Cloudinary';
     }
   };
+
 
   form.querySelector('#generateAI').onclick = async () => {
     const overwrite = form.querySelector('#aiOverwrite').checked;
@@ -439,7 +455,7 @@ export async function productEditor(root, api, toast, id) {
       });
       const f = new FormData(form);
       const data = {
-        name: f.get('name'), sku, brand: f.get('brand'), status: f.get('status'),
+        name: f.get('name'), sku, brand: f.get('brand'), status: f.get('status'), lotId: f.get('lotId') || null,
         shortCode: f.get('shortCode') || undefined, categoryPaths: selected,
         tags: String(f.get('tags') || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean),
         isNewArrival: f.has('isNewArrival'), isFeatured: f.has('isFeatured'), isBestSeller: f.has('isBestSeller'),
