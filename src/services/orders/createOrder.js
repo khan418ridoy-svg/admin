@@ -31,7 +31,7 @@ async function createOrder({customer,items,verification,conversationId,idempoten
    if(!Number.isFinite(price)||price<=0)throw new Error('invalid_price');
    const regular=Number(v.regularPrice)>0?Number(v.regularPrice):Number(p.baseRegularPrice||p.regularPrice||price);
    subtotal+=price*qty;
-   lines.push({productId:item.productId,variantSku:sku,name:p.name,slug:p.slug||'',shortCode:p.shortCode||'',color:v.color,size:v.size,qty,unitPrice:price,regularPrice:regular,lineTotal:price*qty});
+   lines.push({productId:item.productId,variantSku:sku,lotId: p.lotId || null,name:p.name,slug:p.slug||'',shortCode:p.shortCode||'',color:v.color,size:v.size,qty,unitPrice:price,regularPrice:regular,lineTotal:price*qty});
   }
   const cfg = cfgSnap.data() || {};
   const pub = publicSnap.data() || {};
