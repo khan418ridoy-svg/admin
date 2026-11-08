@@ -17,3 +17,28 @@
   opacity: .6;
   cursor: wait;
 }
+
+/* Product inventory actions and lot-wise stock modal */
+.product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stock-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+  justify-content: center; padding: 20px; background: rgba(15, 23, 42, .55);
+}
+.stock-modal { width: min(900px, 100%); max-height: min(90vh, 850px); overflow: auto; padding: 22px; }
+.stock-modal-head, .stock-modal-foot, .stock-entry-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.stock-modal-head { margin-bottom: 18px; }
+.stock-modal-head h2 { margin: 0 0 5px; font-size: 20px; }
+.stock-entry-toolbar { margin: 22px 0 10px; }
+.stock-entry-table { min-width: 650px; }
+.stock-entry-table input, .stock-entry-table select { width: 100%; min-width: 90px; }
+.stock-entry-table .new-variant-fields { display: grid; grid-template-columns: repeat(2, minmax(90px, 1fr)); gap: 6px; }
+.stock-modal-foot { justify-content: flex-end; margin-top: 20px; }
+.stock-modal .hidden { display: none !important; }
+@media (max-width: 650px) {
+  .stock-modal-backdrop { padding: 8px; }
+  .stock-modal { padding: 14px; }
+  .stock-modal .form-grid { grid-template-columns: 1fr; }
+  .product-actions { flex-direction: column; align-items: stretch; }
+}
