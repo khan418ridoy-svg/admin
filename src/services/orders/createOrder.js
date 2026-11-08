@@ -1,5 +1,6 @@
 const {db,FieldValue,FieldPath}=require('../../config/firebase');
 const settings=require('../../config/settings');
+const { allocateStock, syncVariantTotals } = require('../inventory/stockLots');
 async function createOrder({customer,items,verification,conversationId,idempotencyKey,couponCode,source='facebook',paymentMethod='cod'}){
  if(!Array.isArray(items)||!items.length)throw new Error('empty_order');
  if(source==='facebook'&&couponCode)throw new Error('messenger_coupon_not_allowed');
@@ -20,18 +21,23 @@ async function createOrder({customer,items,verification,conversationId,idempoten
   const productSnaps=rest.slice(0,items.length);
   const couponSnap=couponRef?rest[items.length]:null;
   const phoneClaimSnap=phoneClaimRef?rest[items.length+1]:null;
-  let subtotal=0;const lines=[];
+  let subtotal=0;const lines=[];const workingProducts=new Map();
   for(let n=0;n<items.length;n++){
-   const p=productSnaps[n].data();if(!p||p.status!=='active')throw new Error('product_unavailable');
-   const item=items[n];const found=Object.entries(p.variants||{}).find(([sku,v])=>(sku===item.variantSku||(v.color===item.color&&v.size===item.size))&&v.isActive!==false);
+   const snap=productSnaps[n];const original=snap.data();if(!original||original.status!=='active')throw new Error('product_unavailable');
+   const item=items[n];
+   if(!workingProducts.has(snap.id)) workingProducts.set(snap.id, { ...original, variants: { ...(original.variants || {}) }, stockLots: Array.isArray(original.stockLots) ? original.stockLots.map(l => ({ ...l, quantities: { ...(l.quantities || {}) } })) : undefined });
+   const p=workingProducts.get(snap.id);
+   const found=Object.entries(p.variants||{}).find(([sku,v])=>(sku===item.variantSku||(v.color===item.color&&v.size===item.size))&&v.isActive!==false);
    if(!found)throw new Error('variant_unavailable');
    const [sku,v]=found,qty=Math.max(1,Math.min(5,Number(item.qty)||1));
-   if((Number(v.stock)||0)<qty)throw new Error('out_of_stock');
+   const { stockLots, allocations } = allocateStock(p, snap.id, sku, qty);
+   p.stockLots = stockLots;
+   p.variants = syncVariantTotals(p, stockLots);
    const price=Number(v.sellingPrice)>0?Number(v.sellingPrice):Number(p.baseSellingPrice||p.sellingPrice||p.minPrice||0);
    if(!Number.isFinite(price)||price<=0)throw new Error('invalid_price');
    const regular=Number(v.regularPrice)>0?Number(v.regularPrice):Number(p.baseRegularPrice||p.regularPrice||price);
    subtotal+=price*qty;
-   lines.push({productId:item.productId,variantSku:sku,lotId: p.lotId || null,name:p.name,slug:p.slug||'',shortCode:p.shortCode||'',color:v.color,size:v.size,qty,unitPrice:price,regularPrice:regular,lineTotal:price*qty});
+   lines.push({productId:item.productId,variantSku:sku,lotId: allocations[0]?.lotId || null,stockAllocations: allocations.map(a => ({ ...a, createdAt: (stockLots.find(l => l.lotId === a.lotId)?.createdAt || 0) })),name:p.name,slug:p.slug||'',shortCode:p.shortCode||'',color:v.color,size:v.size,qty,unitPrice:price,regularPrice:regular,lineTotal:price*qty});
   }
   const cfg = cfgSnap.data() || {};
   const pub = publicSnap.data() || {};
@@ -81,7 +87,9 @@ async function createOrder({customer,items,verification,conversationId,idempoten
   const next=(counterSnap.data()?.order||0)+1,orderNo=`NF-${String(next).padStart(6,'0')}`;
   tx.set(counterRef,{order:next},{merge:true});
   const changedIds=[...new Set(items.map(i=>String(i.productId)))];
-  for(let n=0;n<items.length;n++)tx.update(db.doc(`products/${items[n].productId}`),new FieldPath('variants',lines[n].variantSku,'stock'),FieldValue.increment(-lines[n].qty));
+  for (const [productId, product] of workingProducts) {
+   tx.update(db.doc(`products/${productId}`), { variants: product.variants, stockLots: product.stockLots || [] , totalStock: Object.values(product.variants || {}).reduce((sum, v) => sum + Math.max(0, Number(v.stock) || 0), 0), updatedAt: Date.now() });
+  }
   let version=Number(versionSnap.data()?.version||0);
   const changes=Array.isArray(versionSnap.data()?.changes)?[...versionSnap.data().changes]:[];
   for(const id of changedIds){version++;changes.push({version,id,deleted:false,at:Date.now()});}
