@@ -73,9 +73,9 @@ function stockModalHtml(product, lots) {
   </div>`;
 }
 
-function stockEntryRow(product) {
+function stockEntryRow(product, selectedSku = '', initialQty = 1) {
   const options = Object.entries(product.variants || {}).map(([sku, v]) =>
-    `<option value="${esc(sku)}">${esc(v.color)} / ${esc(v.size)} · ${esc(sku)}</option>`
+    `<option value="${esc(sku)}" ${sku === selectedSku ? 'selected' : ''}>${esc(v.color)} / ${esc(v.size)} · ${esc(sku)}</option>`
   ).join('');
   return `<tr>
     <td><select data-stock-variant><option value="">Select variant</option>${options}<option value="__new__">+ Create new variant</option></select></td>
@@ -85,7 +85,7 @@ function stockEntryRow(product) {
       <input data-new-regular type="number" min="0" placeholder="Regular price">
       <input data-new-selling type="number" min="0" placeholder="Selling price">
     </div><span class="muted existing-variant-hint">Choose an existing variant or create a new one</span></td>
-    <td><input data-stock-qty type="number" min="1" step="1" value="1" aria-label="Quantity"></td>
+    <td><input data-stock-qty type="number" min="0" step="1" value="${initialQty}" aria-label="Quantity"></td>
     <td><button type="button" class="btn danger small" data-remove-stock-row>Remove</button></td>
   </tr>`;
 }
@@ -169,8 +169,11 @@ export async function renderProducts(root, { api, toast, renderPage }) {
       root.insertAdjacentHTML('beforeend', stockModalHtml(product, lotData.items || []));
       const modal = root.querySelector('[data-stock-backdrop]');
       const rows = modal.querySelector('#stockEntryRows');
-      const addRow = () => rows.insertAdjacentHTML('beforeend', stockEntryRow(product));
-      addRow();
+      // Show every existing variant immediately; quantity 0 means 'do not add stock'.
+      const existingVariants = Object.keys(product.variants || {});
+      existingVariants.forEach(sku => rows.insertAdjacentHTML('beforeend', stockEntryRow(product, sku, 0)));
+      if (!existingVariants.length) rows.insertAdjacentHTML('beforeend', stockEntryRow(product, '', 1));
+      const addRow = () => rows.insertAdjacentHTML('beforeend', stockEntryRow(product, '', 1));
 
       modal.querySelectorAll('[data-stock-close]').forEach(b => b.addEventListener('click', () => modal.remove()));
       modal.querySelector('#stockLotMode').addEventListener('change', e => {
@@ -196,9 +199,10 @@ export async function renderProducts(root, { api, toast, renderPage }) {
       modal.querySelector('#saveStockBtn').addEventListener('click', async saveButtonEvent => {
         const saveButton = saveButtonEvent.currentTarget;
         const mode = modal.querySelector('#stockLotMode').value;
-        const entries = [...rows.querySelectorAll('tr')].map(tr => {
+        const allEntries = [...rows.querySelectorAll('tr')].map(tr => {
           const selected = tr.querySelector('[data-stock-variant]').value;
-          const qty = Number(tr.querySelector('[data-stock-qty]').value);
+          const qtyInput = tr.querySelector('[data-stock-qty]');
+          const qty = Number(qtyInput.value || 0);
           if (selected === '__new__') {
             return { newVariant: {
               color: tr.querySelector('[data-new-color]').value.trim(),
@@ -209,7 +213,12 @@ export async function renderProducts(root, { api, toast, renderPage }) {
           }
           return { variantSku: selected, qty };
         });
-        if (entries.some(x => (!x.variantSku && !x.newVariant) || !Number.isSafeInteger(x.qty) || x.qty <= 0)) return toast('প্রতিটি row-তে Variant এবং সঠিক Qty দিন');
+        // Existing variants are pre-listed with quantity 0; only positive quantities are submitted.
+        const entries = allEntries.filter(x => x.qty > 0);
+        if (!entries.length) return toast('কমপক্ষে একটি Variant-এর Qty দিন');
+        if (entries.some(x => (!x.variantSku && !x.newVariant) || !Number.isSafeInteger(x.qty) || x.qty <= 0)) return toast('প্রতিটি নির্বাচিত row-তে Variant এবং সঠিক Qty দিন');
+        const skus = entries.filter(x => x.variantSku).map(x => x.variantSku);
+        if (new Set(skus).size !== skus.length) return toast('একই Variant একাধিকবার যোগ করা যাবে না');
         const payload = {
           lotMode: mode,
           lotNo: modal.querySelector('#stockLotNo').value.trim(),
