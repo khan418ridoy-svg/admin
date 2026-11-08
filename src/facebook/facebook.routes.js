@@ -6,7 +6,7 @@ const { db } = require('../config/firebase');
 const { GRAPH_VERSION } = require('../config/settings');
 
 const graph = `https://graph.facebook.com/${GRAPH_VERSION}`;
-const scopes = (process.env.META_SCOPES || 'pages_show_list,pages_manage_metadata,pages_messaging,pages_read_engagement').split(',').map(x => x.trim()).filter(Boolean).join(',');
+const scopes = (process.env.META_SCOPES || 'pages_show_list,pages_manage_metadata,pages_messaging,pages_read_engagement,pages_manage_engagement').split(',').map(x => x.trim()).filter(Boolean).join(',');
 // Sets the Messenger "Get Started" button and the always-visible persistent menu (Home / New products / My orders / Cart).
 async function setupMessengerProfile(token) {
   const site = (process.env.SITE_URL || '').replace(/\/$/, '');
@@ -105,7 +105,7 @@ router.post('/select-page', adminAuth, asyncHandler(async (req, res) => {
   if (!snap.exists) return res.status(400).json({ error: 'Connect Facebook first.' });
   const page = (snap.data().pages || []).find(p => p.id === pageId);
   if (!page) return res.status(404).json({ error: 'Page not found in this Facebook connection.' });
-  const subscribeParams = new URLSearchParams({ subscribed_fields: 'messages,messaging_postbacks', access_token: page.accessToken });
+  const subscribeParams = new URLSearchParams({ subscribed_fields: 'messages,messaging_postbacks,feed', access_token: page.accessToken });
   const subscribeResponse = await fetch(`${graph}/${encodeURIComponent(page.id)}/subscribed_apps`, {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: subscribeParams
   });
@@ -119,7 +119,7 @@ router.post('/select-page', adminAuth, asyncHandler(async (req, res) => {
   await ref.set({ selectedPageId: page.id, pageId: page.id, pageName: page.name, pageAccessToken: page.accessToken, updatedAt: Date.now() }, { merge: true });
   await db.doc('meta/privateFacebook').set({
     pageId: page.id, pageName: page.name, pageAccessToken: page.accessToken,
-    webhookSubscribed: true, webhookSubscribedFields: ['messages', 'messaging_postbacks'], updatedAt: Date.now()
+    webhookSubscribed: true, webhookSubscribedFields: ['messages', 'messaging_postbacks', 'feed'], updatedAt: Date.now()
   });
   console.log(`[facebook] Active Messenger Page selected: ${page.name} (${page.id}); webhook subscribed.`);
   const profile = await setupMessengerProfile(page.accessToken);

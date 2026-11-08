@@ -7,6 +7,7 @@ const verifier = require('../services/ai/verifier');
 const { createOrder } = require('../services/orders/createOrder');
 const { normalizePhone } = require('../utils/phone');
 const { HISTORY_LIMIT, SITE_URL } = require('../config/settings');
+const { matchProductImage } = require('./imageProductMatcher');
 
 const safe = (v, n = 100) => String(v || '').trim().slice(0, n);
 const makePayload = (...p) => p.join('|');
@@ -73,13 +74,19 @@ async function sendWelcome(psid, name = '') {
   const cats = flattenCategories(await catalog.categories());
   const first = safe(name, 40).split(' ')[0];
   const greeting = `আসসালামু আলাইকুম${first ? ` ${first}` : ''}! 🌸\nনিশাত ফ্যাশনে আপনাকে স্বাগতম।\n\nআমাদের কালেকশনে রয়েছে বিভিন্ন ধরনের ফ্যাশনেবল পোশাক। আপনি কী ধরনের পণ্য খুঁজছেন?`;
-  const choices = [
-    ...cats.slice(0, 6).map(c => ({ title: String(c.name).slice(0, 20), payload: `CAT|${c.id}` })),
-    { title: '🆕 নতুন পণ্য', payload: 'MENU|NEW' },
-    { title: '📦 আমার অর্ডার', payload: 'MENU|ORDERS' },
-    { title: '🛒 Cart', payload: 'CART|SHOW' }
+  const menuCards = [
+    { title: '🛍️ পণ্য দেখুন', subtitle: 'আমাদের সব Category ও Collection', buttons: [{ title: 'সব Category', payload: 'MENU|SHOP' }, { title: 'নতুন পণ্য', payload: 'MENU|NEW' }] },
+    { title: '🔎 পণ্য খুঁজুন', subtitle: 'নাম, Product Code বা SKU দিয়ে খুঁজুন', buttons: [{ title: 'পণ্য খুঁজুন', payload: 'MENU|SEARCH' }] },
+    { title: '🛒 আমার Cart', subtitle: 'Cart দেখুন এবং Checkout করুন', buttons: [{ title: 'Cart দেখুন', payload: 'CART|SHOW' }, { title: 'Checkout', payload: 'CHECKOUT' }] },
+    { title: '📦 আমার অর্ডার', subtitle: 'Order Status ও বিস্তারিত জানুন', buttons: [{ title: 'অর্ডার দেখুন', payload: 'MENU|ORDERS' }] }
   ];
-  return sendOptions(psid, greeting, choices);
+  if (cats.length) menuCards.push({ title: '✨ জনপ্রিয় Category', subtitle: cats.slice(0, 5).map(c => c.name).join(' · '), buttons: cats.slice(0, 3).map(c => ({ title: String(c.name).slice(0, 20), payload: `CAT|${c.id}` })) });
+  await msgr.generic(psid, menuCards.map(card => ({ title: card.title, subtitle: card.subtitle, buttons: card.buttons.map(b => ({ type: 'postback', ...b })) })));
+  return msgr.quickReplies(psid, 'দ্রুত বেছে নিন:', [
+    { title: '🆕 নতুন কালেকশন', payload: 'MENU|NEW' },
+    { title: '🔎 Product Search', payload: 'MENU|SEARCH' },
+    { title: '📦 অর্ডার', payload: 'MENU|ORDERS' }
+  ]);
 }
 function isGreeting(text) {
   const t = String(text || '').toLowerCase().trim();
@@ -336,7 +343,7 @@ async function handleCheckoutInput(psid, text, conv) {
 }
 
 /* ---------- Main entry ---------- */
-async function handle({ psid, text, payload, mid, senderName = '' }) {
+async function handle({ psid, text, payload, mid, senderName = '', attachmentUrl = null }) {
   // কনসোল লগ (ডিবাগ করার জন্য)
   console.log(`\n--- [BOT START] ---`);
   console.log(`Message: "${text}" | Payload: "${payload}" from ${psid}`);
@@ -357,6 +364,22 @@ async function handle({ psid, text, payload, mid, senderName = '' }) {
   if (conv.profileName) await ref.set({ profileName: conv.profileName, profileNameUpdatedAt: Date.now() }, { merge: true });
   await catalog.refresh();
   const content = safe(text, 2000);
+  if (attachmentUrl) {
+    await inbox(psid, mid || `image_${Date.now()}`, 'incoming', content ? `[Customer sent a product image] ${content}` : '[Customer sent a product image]', { receivedAt: Date.now(), senderName: conv.profileName || senderName || '', attachmentUrl });
+    try {
+      const result = await matchProductImage(attachmentUrl);
+      if (result.matched) {
+        await msgr.text(psid, `স্যার, ছবির সঙ্গে এই Product-টি মিলেছে বলে মনে হচ্ছে (${Math.round(result.confidence * 100)}% confidence)।`);
+        await sendProductCards(psid, [result.product]);
+        await inbox(psid, `image_match_${mid || Date.now()}`, 'assistant', `Image matched: ${result.product.name} (${result.product.shortCode || result.product.sku || result.product.id})`, { productId: result.product.id, confidence: result.confidence });
+        return;
+      }
+    } catch (e) { console.error('[product-image-match-failed]', e.message); }
+    return msgr.quickReplies(psid, 'স্যার, ছবির সঙ্গে Catalog-এর কোনো Product নিশ্চিতভাবে মেলাতে পারিনি। অনুগ্রহ করে Product Code লিখুন।', [
+      { title: '🔎 Product Code লিখুন', payload: 'MENU|SEARCH' },
+      { title: '🛍️ পণ্য দেখুন', payload: 'MENU|SHOP' }
+    ]);
+  }
   if (content) {
     conv.messages = [...conv.messages, { role: 'user', content, at: Date.now() }].slice(-HISTORY_LIMIT);
     conv.lastInboundAt = Date.now();
@@ -383,6 +406,9 @@ async function handle({ psid, text, payload, mid, senderName = '' }) {
     if (action === 'GET_STARTED' || (action === 'MENU' && parts[1] === 'HOME')) {
       conv.checkout = null; conv.flow = null; conv.pendingItem = null; await saveConversation(ref, conv, { lastInboundAt: Date.now() });
       return sendWelcome(psid, conv.profileName);
+    }
+    if (action === 'MENU' && parts[1] === 'SEARCH') {
+      return msgr.quickReplies(psid, 'স্যার, Product Name, Product Code অথবা SKU লিখে পাঠান।', NAV);
     }
     if (action === 'MENU' && parts[1] === 'NEW') {
       conv.checkout = null; conv.flow = null; conv.pendingItem = null; await saveConversation(ref, conv);
