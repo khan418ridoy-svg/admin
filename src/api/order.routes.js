@@ -3,6 +3,7 @@ const adminAuth = require('../middleware/adminAuth');
 const asyncHandler = require('../utils/asyncHandler');
 const { db, FieldValue, FieldPath } = require('../config/firebase');
 const msgr = require('../facebook/messenger');
+const { restoreAllocations, syncVariantTotals } = require('../services/inventory/stockLots');
 
 router.use(adminAuth);
 
@@ -80,6 +81,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     const versionSnap = shouldRelease ? await tx.get(versionRef) : null;
     const products = new Map(productSnaps.map(s => [s.id, s]));
     const stockDeltas = [];
+    const workingProducts = new Map();
     if (shouldRelease) {
       for (const item of items) {
         const productId = String(item.productId || ''), variantSku = String(item.variantSku || '');
@@ -87,13 +89,27 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
         if (!productId || !variantSku || qty <= 0) continue;
         const productSnap = products.get(productId);
         if (!productSnap?.exists) { const err = new Error(`product_missing_during_stock_release:${productId}`); err.status = 409; throw err; }
-        const variant = productSnap.data()?.variants?.[variantSku];
-        if (!variant) { const err = new Error(`variant_missing_during_stock_release:${variantSku}`); err.status = 409; throw err; }
+        if (!workingProducts.has(productId)) {
+          const data = productSnap.data() || {};
+          workingProducts.set(productId, { ...data, variants: { ...(data.variants || {}) }, stockLots: Array.isArray(data.stockLots) ? data.stockLots.map(l => ({ ...l, quantities: { ...(l.quantities || {}) } })) : undefined });
+        }
+        const product = workingProducts.get(productId);
+        if (!product.variants?.[variantSku]) { const err = new Error(`variant_missing_during_stock_release:${variantSku}`); err.status = 409; throw err; }
+        const allocations = Array.isArray(item.stockAllocations) && item.stockAllocations.length
+          ? item.stockAllocations
+          : [{ lotId: `opening-${productId}`, lotNo: 'OPENING', qty }];
+        product.stockLots = restoreAllocations(product, productId, variantSku, allocations);
+        product.variants = syncVariantTotals(product, product.stockLots);
         stockDeltas.push({ productId, variantSku, qty });
       }
+      for (const [productId, product] of workingProducts) {
+        tx.update(db.doc(`products/${productId}`), {
+          variants: product.variants, stockLots: product.stockLots || [],
+          totalStock: Object.values(product.variants || {}).reduce((sum, v) => sum + Math.max(0, Number(v.stock) || 0), 0),
+          updatedAt: Date.now()
+        });
+      }
     }
-
-    for (const delta of stockDeltas) tx.update(db.doc(`products/${delta.productId}`), new FieldPath('variants', delta.variantSku, 'stock'), FieldValue.increment(delta.qty));
 
     if (stockDeltas.length) {
       let version = Number(versionSnap?.data()?.version || 0);

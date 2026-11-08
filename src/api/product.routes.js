@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { db, FieldValue } = require('../config/firebase');
 const { buildCatalogItem } = require('../services/catalog/toItem');
 const productCache = require('../services/catalog/productCache');
+const { ensureStockLots, syncVariantTotals } = require('../services/inventory/stockLots');
 
 router.use(adminAuth);
 
@@ -238,6 +239,118 @@ router.patch('/bulk-status', asyncHandler(async (req, res) => {
   }
 
   res.json({ ok: true, count: ids.length, status });
+}));
+
+
+router.get('/:id/stock', asyncHandler(async (req, res) => {
+  const snap = await db.doc(`products/${req.params.id}`).get();
+  if (!snap.exists) return res.status(404).json({ ok: false, error: 'product_not_found' });
+  const product = snap.data() || {};
+  const stockLots = ensureStockLots(product, snap.id);
+  const lots = stockLots.map(lot => ({
+    lotId: lot.lotId, lotNo: lot.lotNo, createdAt: lot.createdAt || 0,
+    note: lot.note || '', quantities: lot.quantities || {}
+  }));
+  res.json({ ok: true, product: { id: snap.id, name: product.name, sku: product.sku, variants: product.variants || {} }, lots });
+}));
+
+router.post('/:id/stock', asyncHandler(async (req, res) => {
+  const productRef = db.doc(`products/${req.params.id}`);
+  const productSnap = await productRef.get();
+  if (!productSnap.exists) return res.status(404).json({ ok: false, error: 'product_not_found' });
+  const body = req.body || {};
+  const entries = Array.isArray(body.entries) ? body.entries : [];
+  if (!entries.length || entries.length > 100) return res.status(400).json({ ok: false, error: 'stock_entries_required' });
+
+  const mode = body.lotMode === 'existing' ? 'existing' : 'new';
+  const lotNo = String(body.lotNo || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '-').slice(0, 40);
+  let lotRef;
+  if (mode === 'existing') {
+    if (!String(body.lotId || '').trim()) return res.status(400).json({ ok: false, error: 'lot_required' });
+    lotRef = db.doc(`lots/${String(body.lotId).trim()}`);
+  } else {
+    if (!lotNo) return res.status(400).json({ ok: false, error: 'lot_no_required' });
+    const duplicate = await db.collection('lots').where('lotNo', '==', lotNo).limit(1).get();
+    if (!duplicate.empty) return res.status(409).json({ ok: false, error: 'lot_no_already_exists' });
+    lotRef = db.doc(`lots/${lotNo}`);
+  }
+
+  const result = await db.runTransaction(async tx => {
+    const [pSnap, lSnap, versionSnap] = await Promise.all([
+      tx.get(productRef), tx.get(lotRef), tx.get(db.doc('meta/catalogVersion'))
+    ]);
+    if (!pSnap.exists) throw Object.assign(new Error('product_not_found'), { status: 404 });
+    if (mode === 'existing' && !lSnap.exists) throw Object.assign(new Error('lot_not_found'), { status: 404 });
+    if (mode === 'new' && lSnap.exists) throw Object.assign(new Error('lot_no_already_exists'), { status: 409 });
+    const product = pSnap.data() || {};
+    const variants = { ...(product.variants || {}) };
+    let stockLots = ensureStockLots(product, pSnap.id);
+    const added = [];
+
+    for (const entry of entries) {
+      const qty = Number(entry.qty);
+      if (!Number.isSafeInteger(qty) || qty <= 0 || qty > 1000000) throw Object.assign(new Error('invalid_stock_quantity'), { status: 400 });
+      let sku = String(entry.variantSku || '').trim();
+      if (entry.newVariant) {
+        const color = String(entry.newVariant.color || '').trim();
+        const size = String(entry.newVariant.size || '').trim();
+        if (!color || !size) throw Object.assign(new Error('new_variant_color_size_required'), { status: 400 });
+        const exists = Object.entries(variants).some(([, v]) => String(v.color).toLowerCase() === color.toLowerCase() && String(v.size).toLowerCase() === size.toLowerCase());
+        if (exists) throw Object.assign(new Error('variant_already_exists'), { status: 409 });
+        const suffix = `${color}-${size}`.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+        sku = `${String(product.sku || 'SKU').toUpperCase()}-${suffix}`.slice(0, 100);
+        if (variants[sku]) throw Object.assign(new Error('variant_sku_already_exists'), { status: 409 });
+        const regularPrice = Math.max(0, Number(entry.newVariant.regularPrice) || Number(product.baseRegularPrice) || 0);
+        const sellingPrice = Math.max(0, Number(entry.newVariant.sellingPrice) || Number(product.baseSellingPrice) || 0);
+        if (regularPrice > 0 && sellingPrice > regularPrice) throw Object.assign(new Error('variant_price_invalid'), { status: 400 });
+        variants[sku] = {
+          color, size, variantSku: sku, regularPrice, sellingPrice,
+          discountPercent: regularPrice > 0 ? Math.max(0, Math.round((regularPrice - sellingPrice) / regularPrice * 100)) : 0,
+          stock: 0, lowStockAlert: Math.max(0, Number(entry.newVariant.lowStockAlert ?? 5)),
+          isActive: true
+        };
+      }
+      if (!variants[sku]) throw Object.assign(new Error(`variant_not_found:${sku}`), { status: 400 });
+      if (variants[sku].isActive === false) throw Object.assign(new Error(`variant_inactive:${sku}`), { status: 400 });
+      added.push({ variantSku: sku, qty });
+    }
+
+    let lot = stockLots.find(x => String(x.lotId) === lotRef.id);
+    if (!lot) {
+      lot = {
+        lotId: lotRef.id,
+        lotNo: mode === 'new' ? lotNo : String(lSnap.data()?.lotNo || lotRef.id),
+        createdAt: mode === 'new' ? Date.now() : Number(lSnap.data()?.createdAt || Date.now()),
+        note: String(body.note || '').trim().slice(0, 500),
+        quantities: {}
+      };
+      stockLots.push(lot);
+    }
+    for (const item of added) lot.quantities[item.variantSku] = Math.max(0, Number(lot.quantities[item.variantSku]) || 0) + item.qty;
+
+    const updated = { ...product, variants, stockLots };
+    updated.variants = syncVariantTotals(updated, stockLots);
+    const summary = summarize(updated);
+    summary.updatedAt = Date.now();
+    summary.cacheUpdatedAt = Date.now();
+    const version = Number(versionSnap.data()?.version || 0) + 1;
+    const changes = [...(Array.isArray(versionSnap.data()?.changes) ? versionSnap.data().changes : []), { version, id: pSnap.id, deleted: false, at: Date.now() }].slice(-300);
+    tx.update(productRef, {
+      variants: summary.variants, stockLots, totalStock: summary.totalStock,
+      availableSizes: summary.availableSizes, availableColors: summary.availableColors,
+      stockStatus: summary.stockStatus, hasLowStock: summary.hasLowStock,
+      lowStockCount: summary.lowStockCount, updatedAt: summary.updatedAt, cacheUpdatedAt: summary.cacheUpdatedAt
+    });
+    if (mode === 'new') tx.create(lotRef, {
+      lotNo, createdAt: lot.createdAt, note: lot.note, status: 'active',
+      createdAtServer: Date.now(), updatedAt: Date.now()
+    });
+    tx.set(db.doc('meta/catalog'), { items: { [pSnap.id]: buildCatalogItem(pSnap.id, summary) }, updatedAt: Date.now() }, { merge: true });
+    tx.set(db.doc('meta/catalogVersion'), { version, changes, updatedAt: Date.now() }, { merge: true });
+    return { lotId: lotRef.id, lotNo: lot.lotNo, added, totalStock: summary.totalStock };
+  });
+
+  res.status(200).json({ ok: true, ...result });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
