@@ -11,11 +11,31 @@ const norm = value => String(value ?? '')
   .trim();
 const tokens = value => norm(value).split(' ').filter(Boolean);
 
+// স্পেলিং ভুল ধরার ফাংশন (Levenshtein Distance)
+function levenshtein(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+// সমার্থক শব্দের তালিকা
 const SYNONYMS = [
   ['shirt', ['শার্ট', 'jama', 'জামা', 'shirt']],
   ['t shirt', ['tshirt', 't-shirt', 'টি শার্ট', 'টি-শার্ট', 't shirt']],
   ['polo', ['পোলো', 'polo shirt']],
-  ['pant', ['প্যান্ট', 'trouser', 'trousers']],
+  ['pant', ['প্যান্ট', 'trouser', 'trousers', 'pent', 'pnt']],
   ['red', ['লাল', 'lal', 'red']],
   ['black', ['কালো', 'kalo', 'black']],
   ['white', ['সাদা', 'shada', 'white']],
@@ -32,9 +52,21 @@ const SYNONYMS = [
   ['slim fit', ['স্লিম ফিট', 'slim fit']]
 ];
 
+// ভুল বানান থাকলে সঠিক শব্দে রূপান্তর করা
+function correctSpelling(word) {
+  for (const [canonical, variants] of SYNONYMS) {
+    for (const v of variants) {
+      if (Math.abs(norm(v).length - word.length) <= 2 && levenshtein(norm(v), word) <= 1) {
+        return canonical; // সঠিক শব্দটি রিটার্ন করবে
+      }
+    }
+  }
+  return word;
+}
+
 function expandTerms(query) {
   const q = norm(query);
-  const found = new Set(tokens(q));
+  const found = new Set(tokens(q).map(correctSpelling));
   for (const [canonical, variants] of SYNONYMS) {
     if (variants.some(v => q.includes(norm(v))) || q.includes(norm(canonical))) {
       tokens(canonical).forEach(x => found.add(x));
@@ -97,11 +129,13 @@ function scoreProduct(p, query) {
   const f = productFields(p);
   if (!q) return 0;
   if (f.name === q) return 95;
+  
   const terms = expandTerms(query).filter(t => t.length > 1);
   const filler = new Set(['ase','ache','show','please','product','products','takar','taka','tk','price','দাম','টাকার','টাকা','মধ্যে','ভিতরে','নিচে','থেকে','হতে','মাঝে','দেখান','আছে','চাই','একটি','আমার','জন্য','size','sized','collection','category','vitore','moddhe','niche','beshi','upore','theke','hote','majhe','under','below','within','between','from','to','over','more','than']);
-  const core = tokens(query).filter(t => !/^\d+$/.test(t) && !filler.has(t));
+  const core = tokens(query).map(correctSpelling).filter(t => !/^\d+$/.test(t) && !filler.has(t));
   const searchable = `${f.name} ${f.category} ${f.tags} ${f.attrs}`;
-  if (core.length > 1 && !core.every(term => searchable.split(/\s+/).includes(term))) return 0;
+  
+  if (core.length > 1 && !core.every(term => searchable.includes(term))) return 0;
   let score = 0;
   if (f.name.includes(q)) score += 90;
   for (const term of terms) {
@@ -174,7 +208,6 @@ exports.getById = id => cache.getById(id);
 exports.normalizeQuery = norm;
 exports.parsePrice = parsePrice;
 
-// এখানে সাধারণ কথাবার্তার শব্দগুলো বাদ দেওয়া হয়েছে
 exports.isProductSearchIntent = text => {
   const q = norm(text);
   if (parsePrice(text)) return true;
