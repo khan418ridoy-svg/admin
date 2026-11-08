@@ -45,3 +45,16 @@ button {
 .hidden {
   display: none !important;
 }
+
+
+.loading-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    color: #172554;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: inherit;
+}
