@@ -4,6 +4,7 @@ import { renderPage } from './pages/index.js';
 
 const nav = [
   ['dashboard', '▦', 'Dashboard'],
+  ['pos', '🛒', 'POS'],
   ['products', '▣', 'Products'],
   ['lots', '📦', 'Lots'],
   ['categories', '◫', 'Categories'],
