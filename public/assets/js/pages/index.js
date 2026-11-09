@@ -7,6 +7,7 @@ import { renderLowStock } from './low-stock.js';
 import { renderBotChats } from './bot-chats.js';
 import { renderCoupons } from './coupons.js';
 import { renderSettings } from './settings.js';
+import { renderPos } from './pos.js';
 import { renderFacebookSettings } from './facebook-settings.js';
 import { renderAiSettings } from './ai-settings.js';
 import { head, esc } from '../helpers.js';
@@ -20,6 +21,7 @@ const pages = {
   lots: renderLots,
   categories: renderCategories,
   orders: renderOrders,
+  pos: renderPos,
   'low-stock': renderLowStock,
   'bot-chats': renderBotChats,
   coupons: renderCoupons,
