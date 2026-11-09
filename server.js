@@ -44,6 +44,7 @@ app.use('/api/ai', require('./src/api/ai.routes'));
 app.use('/api/bot', require('./src/api/bot.routes'));
 app.use('/api/categories', require('./src/api/category.routes'));
 app.use('/api/coupons', require('./src/api/coupon.routes'));
+app.use('/api/pos', require('./src/api/pos.routes'));
 app.use('/api/dashboard', require('./src/api/dashboard.routes'));
 app.use('/api/orders', require('./src/api/order.routes'));
 app.use('/api/order-form', require('./src/api/orderForm.routes'));
