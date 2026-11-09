@@ -12,4 +12,5 @@ router.use('/products', require('./product.routes'));
 router.use('/settings', require('./settings.routes'));
 router.use('/facebook', require('../facebook/facebook.routes'));
 router.use('/lots', require('./lot.routes'));
+router.use('/pos', require('./pos.routes'));
 module.exports = router;
