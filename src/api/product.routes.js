@@ -131,13 +131,14 @@ function normalizeVariants(
       );
     }
 
-  const prior = old[sku];
+const prior = old[sku];
 
 const stock = prior
   ? Number(prior.stock || 0)
   : Math.max(0, Number(v.stock) || 0);
 
-    const barcode = cleanBarcode(v.barcode);
+// Auto Barcode = Variant SKU
+const barcode = cleanBarcode(v.barcode) || sku;
 
     const regularPrice = Math.max(
       0,
@@ -184,14 +185,16 @@ const stock = prior
   }
 
   // আগে থেকে থাকা Variant মুছে যাবে না
-  for (const [sku, v] of Object.entries(old || {})) {
-    if (!out[sku]) {
-      out[sku] = {
-        ...v,
-        stock: Number(v.stock || 0)
-      };
-    }
+for (const [sku, v] of Object.entries(old || {})) {
+  if (!out[sku]) {
+    out[sku] = {
+      ...v,
+      variantSku: v.variantSku || sku,
+      barcode: cleanBarcode(v.barcode) || sku,
+      stock: Number(v.stock || 0)
+    };
   }
+}
 
   return out;
 }
@@ -213,13 +216,18 @@ async function save(req, res, isCreate) {
 
 
   // Product barcode: valid format + not used by another product.
-  let barcode;
-  try { barcode = cleanBarcode(data.barcode); }
-  catch (e) { return res.status(e.status || 400).json({ ok: false, error: e.message }); }
-  if (barcode) {
-    const bq = await db.collection('products').where('barcode', '==', barcode).limit(2).get();
-    if (bq.docs.some(d => d.id !== id)) return res.status(409).json({ ok: false, error: 'duplicate_barcode' });
-  }
+// Product Barcode না থাকলে Product SKU ব্যবহার হবে
+let barcode;
+
+try {
+  barcode = cleanBarcode(data.barcode);
+} catch (e) {
+  return res.status(e.status || 400).json({
+    ok: false,
+    error: e.message
+  });
+}
+
   
   let paths;
   try { paths = await mapTaxonomy(Array.isArray(data.categoryPaths) ? data.categoryPaths : []); }
@@ -239,6 +247,24 @@ if (!sku || !/^[A-Z0-9_-]{1,100}$/.test(sku)) {
   return res.status(400).json({
     ok: false,
     error: 'invalid_or_empty_product_sku'
+  });
+}
+
+// Product Barcode Auto Generate
+if (!barcode) {
+  barcode = sku;
+}
+
+// Auto-generated এবং manual উভয় Barcode-এর duplicate check
+const barcodeQuery = await db.collection('products')
+  .where('barcode', '==', barcode)
+  .limit(2)
+  .get();
+
+if (barcodeQuery.docs.some(d => d.id !== id)) {
+  return res.status(409).json({
+    ok: false,
+    error: 'duplicate_barcode'
   });
 }
 
@@ -282,6 +308,19 @@ try {
 
   assertUniqueVariantBarcodes(variants);
 
+// Product Barcode এবং Variant Barcode একই হতে পারবে না
+const variantBarcodeList = Object.values(variants)
+  .map(v => cleanBarcode(v.barcode))
+  .filter(Boolean);
+
+if (variantBarcodeList.includes(barcode)) {
+  throw Object.assign(
+    new Error('product_and_variant_barcode_duplicate'),
+    { status: 409 }
+  );
+}
+
+  
 } catch (e) {
   return res.status(e.status || 400).json({
     ok: false,
@@ -501,12 +540,30 @@ router.post('/:id/stock', asyncHandler(async (req, res) => {
         const regularPrice = Math.max(0, Number(entry.newVariant.regularPrice) || Number(product.baseRegularPrice) || 0);
         const sellingPrice = Math.max(0, Number(entry.newVariant.sellingPrice) || Number(product.baseSellingPrice) || 0);
         if (regularPrice > 0 && sellingPrice > regularPrice) throw Object.assign(new Error('variant_price_invalid'), { status: 400 });
-        variants[sku] = {
-          color, size, variantSku: sku, regularPrice, sellingPrice,
-          discountPercent: regularPrice > 0 ? Math.max(0, Math.round((regularPrice - sellingPrice) / regularPrice * 100)) : 0,
-          stock: 0, lowStockAlert: Math.max(0, Number(entry.newVariant.lowStockAlert ?? 5)),
-          isActive: true
-        };
+       variants[sku] = {
+  color,
+  size,
+  variantSku: sku,
+  barcode: sku,
+
+  regularPrice,
+  sellingPrice,
+
+  discountPercent: regularPrice > 0
+    ? Math.max(
+        0,
+        Math.round((regularPrice - sellingPrice) / regularPrice * 100)
+      )
+    : 0,
+
+  stock: 0,
+  lowStockAlert: Math.max(
+    0,
+    Number(entry.newVariant.lowStockAlert ?? 5)
+  ),
+
+  isActive: true
+};
       }
       if (!variants[sku]) throw Object.assign(new Error(`variant_not_found:${sku}`), { status: 400 });
       if (variants[sku].isActive === false) throw Object.assign(new Error(`variant_inactive:${sku}`), { status: 400 });
