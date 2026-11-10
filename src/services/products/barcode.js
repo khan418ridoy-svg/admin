@@ -6,25 +6,35 @@ const BARCODE_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const fail = (message, status = 400) =>
   Object.assign(new Error(message), { status });
 
+/**
+ * Validate and normalize barcode input.
+ * Empty input returns an empty string.
+ */
 function cleanBarcode(value) {
-  const s = String(value ?? '').trim();
+  const barcode = String(value ?? '').trim();
 
-  if (!s) return '';
+  if (!barcode) return '';
 
-  if (!BARCODE_RE.test(s)) {
+  if (!BARCODE_RE.test(barcode)) {
     throw fail('invalid_barcode');
   }
 
-  return s;
+  return barcode;
 }
 
-// Barcode comparison is case-insensitive.
+/**
+ * Case-insensitive barcode key.
+ * Example: abc123 -> ABC123
+ */
 function barcodeKey(value) {
   const barcode = cleanBarcode(value);
   return barcode ? barcode.toUpperCase() : '';
 }
 
-// Firestore document ID for a barcode.
+/**
+ * Firestore document reference.
+ * barcodes/{UPPERCASE_BARCODE}
+ */
 function barcodeDocRef(value) {
   const key = barcodeKey(value);
 
@@ -35,7 +45,9 @@ function barcodeDocRef(value) {
   return db.doc(`barcodes/${key}`);
 }
 
-// Product SKU + Color + Size = Variant SKU.
+/**
+ * Generate Variant SKU from Product SKU + Color + Size.
+ */
 function buildVariantSku(productSku, color, size) {
   const sku = (
     `${String(productSku || 'SKU')}-${String(color || '')}-${String(size || '')}`
@@ -52,16 +64,32 @@ function buildVariantSku(productSku, color, size) {
   return sku;
 }
 
-// Check Product Barcode + all Variant Barcodes together.
-function assertUniqueVariantBarcodes(variants, productBarcode = '') {
+/**
+ * Check Product Barcode + all Variant Barcodes together.
+ */
+function assertUniqueVariantBarcodes(
+  variants,
+  productBarcode = ''
+) {
   const seen = new Set();
 
   if (productBarcode) {
-    seen.add(barcodeKey(productBarcode));
+    const productKey = barcodeKey(productBarcode);
+
+    if (!productKey) {
+      throw fail('invalid_product_barcode');
+    }
+
+    seen.add(productKey);
   }
 
   for (const [sku, variant] of Object.entries(variants || {})) {
-    const barcode = cleanBarcode(variant.barcode || sku);
+    const barcode = cleanBarcode(variant?.barcode || sku);
+
+    if (!barcode) {
+      throw fail('barcode_required');
+    }
+
     const key = barcodeKey(barcode);
 
     if (seen.has(key)) {
@@ -73,31 +101,40 @@ function assertUniqueVariantBarcodes(variants, productBarcode = '') {
 }
 
 /**
- * Transaction-safe global barcode registry.
+ * Synchronize Product + Variant barcode registry
+ * inside an existing Firestore transaction.
  *
- * Firestore:
- * barcodes/{BARCODE}
+ * Collection:
+ * barcodes/{UPPERCASE_BARCODE}
  *
+ * Document:
  * {
- *   barcode: "8901234567890",
+ *   barcode: "NF-0012",
  *   productId: "product123",
- *   type: "variant",
- *   variantSku: "NF-RM-0012-BLACK-XL",
+ *   type: "product" | "variant",
+ *   variantSku: "NF-0012-BLACK-XL" | null,
+ *   format: "CODE128",
  *   createdAt: 123456789,
  *   updatedAt: 123456789
  * }
  *
- * All reads happen before writes.
+ * IMPORTANT:
+ * All transaction reads happen before transaction writes.
  */
 async function syncBarcodeRegistry(tx, productId, entries) {
   if (!productId) {
     throw fail('barcode_product_id_required');
   }
 
+  if (!Array.isArray(entries) || !entries.length) {
+    throw fail('barcode_entries_required');
+  }
+
   const desired = new Map();
 
-  for (const entry of entries || []) {
-    const barcode = cleanBarcode(entry.barcode);
+  // Validate requested barcode claims.
+  for (const entry of entries) {
+    const barcode = cleanBarcode(entry?.barcode);
 
     if (!barcode) {
       throw fail('barcode_required');
@@ -105,6 +142,14 @@ async function syncBarcodeRegistry(tx, productId, entries) {
 
     if (!['product', 'variant'].includes(entry.type)) {
       throw fail('invalid_barcode_type');
+    }
+
+    const variantSku = entry.type === 'variant'
+      ? String(entry.variantSku || '').trim()
+      : '';
+
+    if (entry.type === 'variant' && !variantSku) {
+      throw fail('variant_sku_required');
     }
 
     const key = barcodeKey(barcode);
@@ -118,39 +163,42 @@ async function syncBarcodeRegistry(tx, productId, entries) {
       productId,
       type: entry.type,
       variantSku: entry.type === 'variant'
-        ? String(entry.variantSku || '')
+        ? variantSku
         : null
     });
   }
 
+  const desiredEntries = [...desired.entries()];
+
   const registryQuery = db.collection('barcodes')
     .where('productId', '==', productId);
 
-  const desiredRefs = [...desired.keys()].map(key =>
+  const desiredRefs = desiredEntries.map(([key]) =>
     db.doc(`barcodes/${key}`)
   );
 
-  // Read existing claims and all requested barcode documents.
+  // READ PHASE: all reads before any writes.
   const [existingSnap, desiredSnaps] = await Promise.all([
     tx.get(registryQuery),
-    Promise.all(desiredRefs.map(ref => tx.get(ref)))
+    Promise.all(
+      desiredRefs.map(ref => tx.get(ref))
+    )
   ]);
 
-  const now = Date.now();
-
-  // Check global ownership before writing anything.
-  for (let i = 0; i < desiredRefs.length; i++) {
+  // Check whether requested barcodes belong to another record.
+  for (let i = 0; i < desiredEntries.length; i++) {
+    const [, wanted] = desiredEntries[i];
     const snap = desiredSnaps[i];
 
     if (!snap.exists) continue;
 
-    const wanted = [...desired.values()][i];
     const current = snap.data() || {};
 
     const sameOwner =
       current.productId === productId &&
       current.type === wanted.type &&
-      String(current.variantSku || '') === String(wanted.variantSku || '');
+      String(current.variantSku || '') ===
+        String(wanted.variantSku || '');
 
     if (!sameOwner) {
       throw fail(`duplicate_barcode:${wanted.barcode}`, 409);
@@ -158,21 +206,31 @@ async function syncBarcodeRegistry(tx, productId, entries) {
   }
 
   const desiredKeys = new Set(desired.keys());
+  const now = Date.now();
 
-  // Delete claims no longer used by this product.
+  // WRITE PHASE 1:
+  // Remove obsolete claims owned by this Product only.
   for (const snap of existingSnap.docs) {
-    if (!desiredKeys.has(snap.id)) {
+    const current = snap.data() || {};
+
+    if (
+      current.productId === productId &&
+      !desiredKeys.has(snap.id)
+    ) {
       tx.delete(snap.ref);
     }
   }
 
-  // Create/update all desired claims.
-  for (let i = 0; i < desiredRefs.length; i++) {
+  // WRITE PHASE 2:
+  // Create or update all desired claims.
+  for (let i = 0; i < desiredEntries.length; i++) {
+    const [, entry] = desiredEntries[i];
     const ref = desiredRefs[i];
     const snap = desiredSnaps[i];
-    const entry = [...desired.values()][i];
 
-    const previous = snap.exists ? snap.data() : {};
+    const previous = snap.exists
+      ? snap.data() || {}
+      : {};
 
     tx.set(ref, {
       ...entry,
