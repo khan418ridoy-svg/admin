@@ -77,32 +77,125 @@ async function mapTaxonomy(paths) {
     return { ...p, collectionName: c.name, categoryName: k.name, subCategoryName: s?.name || '' };
   });
 }
+function normalizeVariants(
+  input,
+  old = {},
+  isCreate = false,
+  baseRegularPrice = 0,
+  baseSellingPrice = 0,
+  productSku = ''
+) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw Object.assign(new Error('variants_must_be_map'), { status: 400 });
+  }
 
-function normalizeVariants(input, old = {}, isCreate = false, baseRegularPrice = 0, baseSellingPrice = 0) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw Object.assign(new Error('variants_must_be_map'), { status: 400 });
   const out = {};
-  for (const [sku, v0] of Object.entries(input)) {
+
+  for (const [inputSku, v0] of Object.entries(input)) {
     const v = { ...v0 };
-    if (!v.color || !v.size) throw Object.assign(new Error(`variant_color_size_required:${sku}`), { status: 400 });
-    const prior = old[sku], stock = prior ? Number(prior.stock || 0) : Math.max(0, Number(v.stock) || 0);
+
+    if (!v.color || !v.size) {
+      throw Object.assign(
+        new Error(`variant_color_size_required:${inputSku}`),
+        { status: 400 }
+      );
+    }
+
+    // Product SKU + Color + Size দিয়ে Variant SKU তৈরি
+    const generatedSku = (
+      String(productSku) + '-' +
+      String(v.color).trim() + '-' +
+      String(v.size).trim()
+    )
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 100);
+
+    const sku =
+      (!inputSku || inputSku.startsWith('__pending_variant_'))
+        ? generatedSku
+        : inputSku;
+
+    if (!sku) {
+      throw Object.assign(
+        new Error('variant_sku_generation_failed'),
+        { status: 400 }
+      );
+    }
+
+    if (out[sku]) {
+      throw Object.assign(
+        new Error('duplicate_variant_color_size_or_sku'),
+        { status: 409 }
+      );
+    }
+
+    const prior = old[sku];
+
+    // Edit করার সময় আগের Stock বজায় থাকবে
+    const stock = prior
+      ? Number(prior.stock || 0)
+      : Math.max(0, Number(v.stock) || 0);
+
     const barcode = cleanBarcode(v.barcode);
+
+    const regularPrice = Math.max(
+      0,
+      Number(v.regularPrice) > 0
+        ? Number(v.regularPrice)
+        : Number(baseRegularPrice) || 0
+    );
+
+    const sellingPrice = Math.max(
+      0,
+      Number(v.sellingPrice) > 0
+        ? Number(v.sellingPrice)
+        : Number(baseSellingPrice) || 0
+    );
+
     out[sku] = {
-      color: String(v.color), size: String(v.size), variantSku: sku,
-      regularPrice: Math.max(0, Number(v.regularPrice) > 0 ? Number(v.regularPrice) : Number(baseRegularPrice) || 0),
-      sellingPrice: Math.max(0, Number(v.sellingPrice) > 0 ? Number(v.sellingPrice) : Number(baseSellingPrice) || 0),
-      discountPercent: (Number(v.regularPrice) > 0 ? Number(v.regularPrice) : Number(baseRegularPrice) || 0) > 0 ? Math.max(0, Math.round((((Number(v.regularPrice) > 0 ? Number(v.regularPrice) : Number(baseRegularPrice) || 0) - (Number(v.sellingPrice) > 0 ? Number(v.sellingPrice) : Number(baseSellingPrice) || 0)) / (Number(v.regularPrice) > 0 ? Number(v.regularPrice) : Number(baseRegularPrice) || 0)) * 100)) : 0,
+      color: String(v.color),
+      size: String(v.size),
+      variantSku: sku,
+
+      regularPrice,
+      sellingPrice,
+
+      discountPercent: regularPrice > 0
+        ? Math.max(
+            0,
+            Math.round(
+              ((regularPrice - sellingPrice) / regularPrice) * 100
+            )
+          )
+        : 0,
+
       stock,
-      lowStockAlert: Math.max(0, Number(v.lowStockAlert ?? 5)),
+
+      lowStockAlert: Math.max(
+        0,
+        Number(v.lowStockAlert ?? 5)
+      ),
+
       isActive: v.isActive !== false,
+
       ...(barcode ? { barcode } : {})
     };
   }
+
+  // আগে থেকে থাকা Variant মুছে যাবে না
   for (const [sku, v] of Object.entries(old || {})) {
-    if (!out[sku]) out[sku] = { ...v, stock: Number(v.stock || 0) };
+    if (!out[sku]) {
+      out[sku] = {
+        ...v,
+        stock: Number(v.stock || 0)
+      };
+    }
   }
+
   return out;
 }
-
 async function save(req, res, isCreate) {
   const data = req.body || {};
 
@@ -139,7 +232,14 @@ async function save(req, res, isCreate) {
   
   let variants;
   try {
-    variants = normalizeVariants(data.variants, old.variants || {}, isCreate, baseRegularPrice, baseSellingPrice);
+    variants = normalizeVariants(
+  data.variants,
+  old.variants || {},
+  isCreate,
+  baseRegularPrice,
+  baseSellingPrice,
+  sku
+);
     assertUniqueVariantBarcodes(variants);
   } catch (e) { return res.status(e.status || 400).json({ ok: false, error: e.message }); }
   if (!Object.keys(variants).length) return res.status(400).json({ ok: false, error: 'at_least_one_variant_required' });
@@ -156,14 +256,23 @@ async function save(req, res, isCreate) {
 const slug = old.slug || await uniqueSlug(slugify(data.name), id);
 const now = Date.now(), first = paths[0];
 
-// নতুন Product-এর জন্য Sequential Product Code
-// Edit করলে পুরোনো Product Code অপরিবর্তিত থাকবে।
+
+
+// Product Code এবং Product SKU আগে তৈরি হবে
 const shortCode = old.shortCode || await allocateProductCode(id);
 
-// SKU না দিলে Auto SKU তৈরি হবে।
-const sku = String(data.sku || old.sku || `NF-${shortCode}`)
+const sku = String(
+  data.sku || old.sku || `NF-${shortCode}`
+)
   .trim()
   .toUpperCase();
+
+if (!sku) {
+  return res.status(400).json({
+    ok: false,
+    error: 'sku_generation_failed'
+  });
+}
 
 // Duplicate SKU যাচাই
 const dup = await db.collection('products')
@@ -178,7 +287,7 @@ if (dup.docs.some(d => d.id !== id)) {
   });
 }
 
-// Product Code আগে থেকেই অন্য Product-এর হলে Save বন্ধ হবে।
+// Product Code অন্য Product ব্যবহার করছে কি না
 const codeRef = await db.doc(`shortCodes/${shortCode}`).get();
 
 if (codeRef.exists && codeRef.data()?.productId !== id) {
