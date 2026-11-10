@@ -41,7 +41,9 @@ async function createOrder({customer,items,verification,conversationId,idempoten
   }
   const cfg = cfgSnap.data() || {};
   const pub = publicSnap.data() || {};
-  const isDhaka = ['dhaka', 'ঢাকা'].includes(String(customer.district).trim().toLowerCase());
+  const isDhaka = ['dhaka', 'ঢাকা'].includes(
+  String(customer?.district || '').trim().toLowerCase()
+);
   
   // ১. ডিফল্ট ডেলিভারি চার্জ
   let deliveryCharge = Number(isDhaka ? (pub.deliveryDhaka ?? cfg.deliveryDhaka ?? settings.DELIVERY_DHAKA) : (pub.deliveryOutside ?? cfg.deliveryOutside ?? settings.DELIVERY_OUTSIDE));
@@ -101,7 +103,34 @@ async function createOrder({customer,items,verification,conversationId,idempoten
    if(coupon.type==='general')tx.create(phoneClaimRef,{phone:customer.phone,couponCode:String(couponCode).toUpperCase(),orderId:orderRef.id,createdAt:Date.now()});
   }
   const total=Math.max(0,subtotal-couponDiscount)+deliveryCharge;
-  tx.create(orderRef,{orderNo,source,status:'pending',paymentMethod,paymentStatus:'unpaid',customer,items:lines,subtotal,couponCode:couponRef?String(couponCode).trim().toUpperCase():null,couponPhoneClaimId:(couponRef&&coupon?.type==='general')?`${String(customer.phone||'').replace(/\D/g,'')}_${String(couponCode).trim().toUpperCase()}`:null,discount:couponDiscount,deliveryCharge,total,botCreated:source==='facebook',needsReview:verification.verdict!=='ok',verification,conversationId:conversationId||null,idempotencyKey:idempotencyKey||null,createdAt:Date.now(),updatedAt:Date.now()});
+const isPos = source === 'pos';
+
+tx.create(orderRef, {
+  orderNo,
+  source,
+  status: isPos ? 'completed' : 'pending',
+  paymentMethod,
+  paymentStatus: isPos ? 'paid' : 'unpaid',
+  customer,
+  items: lines,
+  subtotal,
+  couponCode: couponRef ? String(couponCode).trim().toUpperCase() : null,
+  couponPhoneClaimId: (couponRef && coupon?.type === 'general')
+    ? `${String(customer.phone || '').replace(/\D/g, '')}_${String(couponCode).trim().toUpperCase()}`
+    : null,
+  discount: couponDiscount,
+  deliveryCharge,
+  total,
+  botCreated: source === 'facebook',
+needsReview: source === 'pos'
+  ? false
+  : verification?.verdict !== 'ok',
+  verification: verification || null,
+  conversationId: conversationId || null,
+  idempotencyKey: idempotencyKey || null,
+  createdAt: Date.now(),
+  updatedAt: Date.now()
+});
   return {orderNo,id:orderRef.id,subtotal,discount:couponDiscount,deliveryCharge,total};
  });
 }
