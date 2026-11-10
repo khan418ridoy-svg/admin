@@ -455,10 +455,14 @@ export async function productEditor(root, api, toast, id) {
       if (!selected.length) throw new Error('কমপক্ষে একটি Category নির্বাচন করুন');
       const vs = collectVariants();
       if (!vs.length) throw new Error('কমপক্ষে একটি Variant যোগ করুন');
-      const sku = form.elements.sku.value.trim();
-      vs.forEach(v => {
-        if (!v.variantSku) v.variantSku = `${sku}-${v.color.slice(0, 3).toUpperCase()}-${v.size.toUpperCase()}`.replace(/[^A-Z0-9-]/g, '');
-      });
+ const sku = form.elements.sku.value.trim().toUpperCase();
+
+vs.forEach(v => {
+  if (!v.variantSku && sku) {
+    v.variantSku = `${sku}-${v.color.slice(0, 3).toUpperCase()}-${v.size.toUpperCase()}`
+      .replace(/[^A-Z0-9-]/g, '');
+  }
+});
       const barcodes = vs.map(v => v.barcode).filter(Boolean);
       if (new Set(barcodes).size !== barcodes.length) throw new Error('একই Barcode একাধিক Variant-এ দেওয়া যাবে না');
       const buyPrice = Number(form.elements.buyPrice.value || 0);
