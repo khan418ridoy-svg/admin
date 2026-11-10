@@ -8,6 +8,7 @@ const productCache = require('../services/catalog/productCache');
 const { ensureStockLots, syncVariantTotals } = require('../services/inventory/stockLots');
 const { cleanBarcode, assertUniqueVariantBarcodes } = require('../services/products/barcode');
 const costStore = require('../services/products/costStore');
+const { allocateProductCode } = require('../services/products/productCode');
 const { REQUIRE_REVIEW_FOR_ACTIVE, activationBlocker, needsActivationCheck } = require('../services/products/activationGate');
 
 router.use(adminAuth);
@@ -104,14 +105,20 @@ function normalizeVariants(input, old = {}, isCreate = false, baseRegularPrice =
 
 async function save(req, res, isCreate) {
   const data = req.body || {};
-  if (!String(data.name || '').trim() || !String(data.sku || '').trim()) return res.status(400).json({ ok: false, error: 'name_and_sku_required' });
+
+  if (!String(data.name || '').trim()) {
+    return res.status(400).json({
+      ok: false,
+      error: 'name_required'
+    });
+  }
+
   const id = isCreate ? db.collection('products').doc().id : req.params.id;
   const ref = db.doc(`products/${id}`), oldSnap = await ref.get();
   if (!isCreate && !oldSnap.exists) return res.status(404).json({ ok: false, error: 'not_found' });
   const old = oldSnap.data() || {};
   
-  const sku = String(data.sku).trim().toUpperCase(), dup = await db.collection('products').where('sku', '==', sku).limit(2).get();
-  if (dup.docs.some(d => d.id !== id)) return res.status(409).json({ ok: false, error: 'duplicate_sku' });
+
 
   // Product barcode: valid format + not used by another product.
   let barcode;
@@ -146,24 +153,40 @@ async function save(req, res, isCreate) {
   if (REQUIRE_REVIEW_FOR_ACTIVE && needsActivationCheck(old.status, nextStatus)) {
     return res.status(409).json({ ok: false, error: 'review_not_ok' });
   }
-  
-  const slug = old.slug || await uniqueSlug(slugify(data.name), id);
-  const now = Date.now(), first = paths[0];
-  let shortCode = old.shortCode || String(data.shortCode || '').trim().toUpperCase();
-  
-  if (!shortCode) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    for (let attempt = 0; attempt < 8; attempt++) {
-      let candidate = '';
-      for (let i = 0; i < 5; i++) candidate += chars[crypto.randomInt(chars.length)];
-      const exists = await db.doc(`shortCodes/${candidate}`).get();
-      if (!exists.exists) { shortCode = candidate; break; }
-    }
-    if (!shortCode) throw Object.assign(new Error('short_code_generation_failed'), { status: 503 });
-  }
-  
-  const codeRef = await db.doc(`shortCodes/${shortCode}`).get();
-  if (codeRef.exists && codeRef.data()?.productId !== id) return res.status(409).json({ ok: false, error: 'duplicate_short_code' });
+const slug = old.slug || await uniqueSlug(slugify(data.name), id);
+const now = Date.now(), first = paths[0];
+
+// নতুন Product-এর জন্য Sequential Product Code
+// Edit করলে পুরোনো Product Code অপরিবর্তিত থাকবে।
+const shortCode = old.shortCode || await allocateProductCode(id);
+
+// SKU না দিলে Auto SKU তৈরি হবে।
+const sku = String(data.sku || old.sku || `NF-${shortCode}`)
+  .trim()
+  .toUpperCase();
+
+// Duplicate SKU যাচাই
+const dup = await db.collection('products')
+  .where('sku', '==', sku)
+  .limit(2)
+  .get();
+
+if (dup.docs.some(d => d.id !== id)) {
+  return res.status(409).json({
+    ok: false,
+    error: 'duplicate_sku'
+  });
+}
+
+// Product Code আগে থেকেই অন্য Product-এর হলে Save বন্ধ হবে।
+const codeRef = await db.doc(`shortCodes/${shortCode}`).get();
+
+if (codeRef.exists && codeRef.data()?.productId !== id) {
+  return res.status(409).json({
+    ok: false,
+    error: 'duplicate_short_code'
+  });
+}
   
   const final = {
     ...old, ...data, id: undefined, slug, sku, shortCode, barcode,
