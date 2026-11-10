@@ -24,8 +24,7 @@ function variantsHtml(p) {
     <td>${Number(v.stock || 0)}</td><td>${v.isActive === false ? 'No' : 'Yes'}</td>
   </tr>`).join('')}</tbody></table></div>`;
 }
-
-function bodyHtml(p) {
+function bodyHtml(p, privateCost = {}) {
   const cats = (p.categoryPaths || [])
     .map(x => [x.collectionName, x.categoryName, x.subCategoryName].filter(Boolean).join(' › ')).filter(Boolean);
   const flags = [p.isNewArrival && 'New Arrival', p.isFeatured && 'Featured', p.isBestSeller && 'Best Seller'].filter(Boolean);
@@ -55,6 +54,15 @@ function bodyHtml(p) {
       </div>
     </div>
     <section class="pv-section"><h3>Price & stock</h3><div class="pv-grid">
+
+
+      
+      ${item(
+  'Buy Price',
+  privateCost.buyPrice == null
+    ? '—'
+    : money(privateCost.buyPrice)
+)}
       ${item('Regular price', money(p.regularPrice || p.baseRegularPrice || 0))}
       ${item('Selling price', money(p.minPrice || p.sellingPrice || 0))}
       ${item('Discount', `${Number(p.discountPercent || 0)}%`)}
@@ -78,6 +86,8 @@ function bodyHtml(p) {
 // products: the currently visible (filtered) list, index: which one to open.
 export function openProductView({ root, api, toast, products, index, onReviewChanged, onEdit }) {
   let i = index;
+
+  
   const wrap = document.createElement('div');
   wrap.className = 'stock-modal-backdrop';
   wrap.dataset.viewBackdrop = '';
@@ -111,43 +121,93 @@ export function openProductView({ root, api, toast, products, index, onReviewCha
     }
   }
 
-  function draw() {
-    const p = products[i];
-    const state = reviewOf(p);
-    wrap.innerHTML = `<section class="stock-modal pv-modal card" role="dialog" aria-modal="true" aria-label="Product details">
-      <div class="pv-head">
-        <div class="pv-head-title">
-          <h2>${esc(p.name || '')}</h2>
-          <div class="muted">${i + 1} / ${products.length} · ${reviewBadge(p)}</div>
-        </div>
-        <div class="pv-head-actions">
-          <button type="button" class="btn secondary" data-pv-change>✎ Change</button>
-          <button type="button" class="btn outline" data-pv-close aria-label="Close">✕</button>
-        </div>
-      </div>
-      ${bodyHtml(p)}
-      <div class="pv-foot">
-        <div class="pv-nav">
-          <button type="button" class="btn outline" data-pv-prev ${i === 0 ? 'disabled' : ''}>← Prev</button>
-          <button type="button" class="btn outline" data-pv-next ${i === products.length - 1 ? 'disabled' : ''}>Next →</button>
-        </div>
-        <div class="pv-marks">
-          <button type="button" class="btn pv-mark-bad" data-mark="not_ok" ${state === 'not_ok' ? 'disabled' : ''}>✖ Not OK</button>
-          <button type="button" class="btn pv-mark-ok" data-mark="ok" ${state === 'ok' ? 'disabled' : ''}>✔ OK mark</button>
-        </div>
-      </div>
-    </section>`;
+  
+async function draw() {
+  const p = products[i];
+  if (!p) return;
 
-    wrap.querySelector('[data-pv-close]').addEventListener('click', close);
-    wrap.querySelector('[data-pv-prev]').addEventListener('click', () => go(-1));
-    wrap.querySelector('[data-pv-next]').addEventListener('click', () => go(1));
-    wrap.querySelector('[data-pv-change]').addEventListener('click', () => { const id = p.id; close(); onEdit(id); });
-    wrap.querySelectorAll('[data-mark]').forEach(b => b.addEventListener('click', () => mark(b.dataset.mark)));
-    wrap.querySelectorAll('[data-pv-thumb]').forEach(t => t.addEventListener('click', () => {
-      wrap.querySelector('#pvMainImg').src = t.dataset.pvThumb;
-      wrap.querySelectorAll('[data-pv-thumb]').forEach(x => x.classList.toggle('active', x === t));
-    }));
+  const currentIndex = i;
+
+  wrap.innerHTML = `
+    <section class="stock-modal pv-modal card">
+      <div class="pv-head">
+        <h2>${esc(p.name || '')}</h2>
+        <button type="button" class="btn outline" data-pv-close>✕</button>
+      </div>
+      <div class="pv-body">Loading product details...</div>
+    </section>
+  `;
+
+  let privateCost = {};
+
+  try {
+    const result = await api(`/api/products/${p.id}`);
+
+    // Next/Prev চাপলে পুরোনো response উপেক্ষা করবে
+    if (i !== currentIndex || products[i] !== p) return;
+
+    privateCost = result?.privateCost || {};
+  } catch (error) {
+    if (i !== currentIndex || products[i] !== p) return;
+
+    toast(`Buy Price load failed: ${error.message}`);
   }
+
+  if (i !== currentIndex || products[i] !== p) return;
+
+  const state = reviewOf(p);
+
+  wrap.innerHTML = `<section class="stock-modal pv-modal card" role="dialog" aria-modal="true" aria-label="Product details">
+    <div class="pv-head">
+      <div class="pv-head-title">
+        <h2>${esc(p.name || '')}</h2>
+        <div class="muted">${i + 1} / ${products.length} · ${reviewBadge(p)}</div>
+      </div>
+      <div class="pv-head-actions">
+        <button type="button" class="btn secondary" data-pv-change>✎ Change</button>
+        <button type="button" class="btn outline" data-pv-close aria-label="Close">✕</button>
+      </div>
+    </div>
+
+    ${bodyHtml(p, privateCost)}
+
+    <div class="pv-foot">
+      <div class="pv-nav">
+        <button type="button" class="btn outline" data-pv-prev ${i === 0 ? 'disabled' : ''}>← Prev</button>
+        <button type="button" class="btn outline" data-pv-next ${i === products.length - 1 ? 'disabled' : ''}>Next →</button>
+      </div>
+      <div class="pv-marks">
+        <button type="button" class="btn pv-mark-bad" data-mark="not_ok" ${state === 'not_ok' ? 'disabled' : ''}>✖ Not OK</button>
+        <button type="button" class="btn pv-mark-ok" data-mark="ok" ${state === 'ok' ? 'disabled' : ''}>✔ OK mark</button>
+      </div>
+    </div>
+  </section>`;
+
+  wrap.querySelector('[data-pv-close]').addEventListener('click', close);
+  wrap.querySelector('[data-pv-prev]').addEventListener('click', () => go(-1));
+  wrap.querySelector('[data-pv-next]').addEventListener('click', () => go(1));
+  wrap.querySelector('[data-pv-change]').addEventListener('click', () => {
+    const id = p.id;
+    close();
+    onEdit(id);
+  });
+
+  wrap.querySelectorAll('[data-mark]').forEach(b =>
+    b.addEventListener('click', () => mark(b.dataset.mark))
+  );
+
+  wrap.querySelectorAll('[data-pv-thumb]').forEach(t =>
+    t.addEventListener('click', () => {
+      const main = wrap.querySelector('#pvMainImg');
+      if (main) main.src = t.dataset.pvThumb;
+
+      wrap.querySelectorAll('[data-pv-thumb]').forEach(x =>
+        x.classList.toggle('active', x === t)
+      );
+    })
+  );
+}
+
 
   wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
   document.addEventListener('keydown', onKey);
