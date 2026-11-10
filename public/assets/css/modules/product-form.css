@@ -33,6 +33,90 @@
   margin: 0;
 }
 
+/* ============================================
+   INPUT LOOK — each field is its own grid cell.
+   Typed text = dark & bold-ish, placeholder = light italic,
+   readonly = grey dashed, so you can tell them apart at a glance.
+   ============================================ */
+
+.product-form .form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.product-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  background: #fafbfe;
+  border: 1px solid var(--line, #e1e5ef);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.product-form .field > label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--muted, #6b7488);
+}
+
+.product-form .field > small {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.product-form input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),
+.product-form select,
+.product-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1.5px solid #c3cde6;
+  border-radius: 8px;
+  background: #eef3ff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+.product-form input::placeholder,
+.product-form textarea::placeholder {
+  color: #8d9ab8;
+  font-weight: 400;
+  font-style: italic;
+  opacity: 1;
+}
+
+.product-form input:not([type=checkbox]):focus,
+.product-form select:focus,
+.product-form textarea:focus {
+  outline: none;
+  border-color: #4f6ef7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(79, 110, 247, .18);
+}
+
+.product-form input[readonly],
+.product-form input:disabled,
+.product-form select:disabled,
+.product-form textarea:disabled {
+  background: repeating-linear-gradient(135deg, #eceef3, #eceef3 6px, #e5e8ef 6px, #e5e8ef 12px);
+  border-style: dashed;
+  border-color: #b7bfd1;
+  color: #5b6477;
+  cursor: not-allowed;
+}
+
+.product-form input[data-barcode] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .04em;
+}
+
 /* Taxonomy picker inside product form */
 .taxonomy-picker {
   display: grid;
@@ -71,19 +155,46 @@
   margin-top: 14px;
 }
 
-/* Variant table */
-.variant-table input {
+/* Variant table — every input sits in its own bordered grid cell */
+.variant-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #d7deef;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.variant-table th {
+  font-size: 11px;
+  background: #f1f4fb;
+  border-bottom: 1px solid #d7deef;
+  border-right: 1px solid #e3e8f4;
+}
+
+.variant-table td {
+  padding: 7px;
+  border-bottom: 1px solid #e3e8f4;
+  border-right: 1px solid #e3e8f4;
+  background: #fff;
+}
+
+.variant-table th:last-child,
+.variant-table td:last-child {
+  border-right: 0;
+}
+
+.variant-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.variant-table input:not([type=checkbox]) {
   min-width: 80px;
   width: 100%;
   padding: 8px;
 }
 
-.variant-table td {
-  padding: 7px;
-}
-
-.variant-table th {
-  font-size: 11px;
+.variant-table input[data-barcode] {
+  min-width: 140px;
 }
 
 /* Image list & rows */
@@ -174,7 +285,7 @@
   }
 
   .variant-table {
-    min-width: 850px;
+    min-width: 1000px;
   }
 
   .sticky-save .btn {
