@@ -33,7 +33,7 @@ function addCostToBatch(batch, productId, data, now) {
   batch.set(
     costDoc(),
     { items: { [productId]: cost }, updatedAt: now },
-    { mergeFields: ['updatedAt', ...[...keys, 'updatedAt'].map(k => `items.${productId}.${k}`)] }
+     function addCostToBatch(batch, productId, data, now) {   if (!productId || typeof productId !== 'string') {     throw Object.assign(new Error('invalid_product_id_for_cost'), { status: 400 });   }    const cost = pickCostFields(data);   if (!Object.keys(cost).length) return false;    cost.updatedAt = now;    batch.set(     costDoc(),     {       items: {         [productId]: cost       },       updatedAt: now     },     { merge: true }   );    return true; }
   );
   return true;
 }
