@@ -463,14 +463,30 @@ vs.forEach(v => {
       .replace(/[^A-Z0-9-]/g, '');
   }
 });
-      const barcodes = vs.map(v => v.barcode).filter(Boolean);
-      if (new Set(barcodes).size !== barcodes.length) throw new Error('একই Barcode একাধিক Variant-এ দেওয়া যাবে না');
+   const sku = form.elements.sku.value.trim().toUpperCase();
+
+const barcodes = vs.map(v => v.barcode).filter(Boolean);
+if (new Set(barcodes).size !== barcodes.length) {
+  throw new Error('একই Barcode একাধিক Variant-এ দেওয়া যাবে না');
+}
       const buyPrice = Number(form.elements.buyPrice.value || 0);
       const variantBuyPrice = {};
-      form.querySelector('#variantBuyPrice').value.split(',').map(x => x.trim()).filter(Boolean).forEach(pair => {
-        const ix = pair.lastIndexOf('=');
-        if (ix > 0) variantBuyPrice[pair.slice(0, ix).trim()] = Number(pair.slice(ix + 1).trim());
-      });
+    form.querySelector('#variantBuyPrice').value
+  .split(',')
+  .map(x => x.trim())
+  .filter(Boolean)
+  .forEach(pair => {
+    const ix = pair.lastIndexOf('=');
+
+    if (ix > 0) {
+      const key = pair.slice(0, ix).trim();
+      const value = Number(pair.slice(ix + 1).trim());
+
+      if (key && Number.isFinite(value) && value >= 0) {
+        variantBuyPrice[key] = value;
+      }
+    }
+  });
       const f = new FormData(form);
       const data = {
         name: f.get('name'), sku, barcode: String(f.get('barcode') || '').trim(), brand: f.get('brand'), status: f.get('status'), lotId: f.get('lotId') || null,
@@ -482,7 +498,12 @@ vs.forEach(v => {
         shortDescription: form.elements.shortDescription.value, description: form.elements.description.value,
         washCare: form.elements.washCare.value, metaTitle: form.elements.metaTitle.value, metaDescription: form.elements.metaDescription.value,
         images, mainImage: f.get('mainImage') || images[0]?.url || '', hoverImage: f.get('hoverImage') || images[1]?.url || '',
-        variants: Object.fromEntries(vs.map(v => [v.variantSku, v])),
+        variants: Object.fromEntries(
+  vs.map((v, i) => [
+    v.variantSku || `__pending_variant_${i + 1}`,
+    v
+  ])
+),
         buyPrice, supplier: f.get('supplier'), purchaseNote: f.get('purchaseNote'), variantBuyPrice,
         ai: { lastGeneratedAt: aiLastGeneratedAt, fields: aiFields }
       };
