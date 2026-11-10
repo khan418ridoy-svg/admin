@@ -455,14 +455,47 @@ export async function productEditor(root, api, toast, id) {
       if (!selected.length) throw new Error('কমপক্ষে একটি Category নির্বাচন করুন');
       const vs = collectVariants();
       if (!vs.length) throw new Error('কমপক্ষে একটি Variant যোগ করুন');
- const sku = form.elements.sku.value.trim().toUpperCase();
+const sku = form.elements.sku.value.trim().toUpperCase();
 
 
+// Product এবং Variant Barcode — সব একসঙ্গে duplicate check
+// Case-insensitive: abc123 এবং ABC123 একই Barcode।
 
-const barcodes = vs.map(v => v.barcode).filter(Boolean);
-if (new Set(barcodes).size !== barcodes.length) {
-  throw new Error('একই Barcode একাধিক Variant-এ দেওয়া যাবে না');
+const productBarcode = String(
+  form.elements.barcode.value || ''
+).trim();
+
+const barcodeEntries = [
+  {
+    label: 'Product',
+    barcode: productBarcode
+  },
+  ...vs.map((v, i) => ({
+    label: `Variant ${i + 1}`,
+    barcode: String(v.barcode || '').trim()
+  }))
+].filter(entry => entry.barcode);
+
+const seenBarcodes = new Map();
+
+for (const entry of barcodeEntries) {
+  const barcode = entry.barcode;
+
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(barcode)) {
+    throw new Error(`Invalid Barcode: ${barcode}`);
+  }
+
+  const key = barcode.toUpperCase();
+
+  if (seenBarcodes.has(key)) {
+    throw new Error(
+      `Duplicate Barcode: ${barcode} — ${seenBarcodes.get(key)} এবং ${entry.label}`
+    );
+  }
+
+  seenBarcodes.set(key, entry.label);
 }
+
       const buyPrice = Number(form.elements.buyPrice.value || 0);
       const variantBuyPrice = {};
     form.querySelector('#variantBuyPrice').value
