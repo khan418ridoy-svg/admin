@@ -131,12 +131,11 @@ function normalizeVariants(
       );
     }
 
-    const prior = old[sku];
+  const prior = old[sku];
 
-    // Edit করার সময় আগের Stock বজায় থাকবে
-    const stock = prior
-      ? Number(prior.stock || 0)
-      : Math.max(0, Number(v.stock) || 0);
+const stock = prior
+  ? Number(prior.stock || 0)
+  : Math.max(0, Number(v.stock) || 0);
 
     const barcode = cleanBarcode(v.barcode);
 
@@ -227,37 +226,6 @@ async function save(req, res, isCreate) {
   catch (e) { return res.status(e.status || 400).json({ ok: false, error: e.message }); }
   if (!paths.length) return res.status(400).json({ ok: false, error: 'at_least_one_category_required' });
   
-  const baseRegularPrice = Math.max(0, Number(data.baseRegularPrice) || 0), baseSellingPrice = Math.max(0, Number(data.baseSellingPrice) || 0);
-  if (baseRegularPrice > 0 && baseSellingPrice > baseRegularPrice) return res.status(400).json({ ok: false, error: 'default_selling_price_cannot_exceed_regular_price' });
-  
-  let variants;
-  try {
-    variants = normalizeVariants(
-  data.variants,
-  old.variants || {},
-  isCreate,
-  baseRegularPrice,
-  baseSellingPrice,
-  sku
-);
-    assertUniqueVariantBarcodes(variants);
-  } catch (e) { return res.status(e.status || 400).json({ ok: false, error: e.message }); }
-  if (!Object.keys(variants).length) return res.status(400).json({ ok: false, error: 'at_least_one_variant_required' });
-  
-  const images = Array.isArray(data.images) ? data.images.filter(x => x && x.url).slice(0, 12) : [];
-  if (data.status === 'active' && images.length < 3) return res.status(400).json({ ok: false, error: 'active_product_requires_minimum_3_images' });
-
-  // Saving resets the review mark, so a product can't jump to active straight from the form:
-  // save as draft -> View -> OK mark -> Active (dropdown or bulk).
-  const nextStatus = ['active', 'inactive', 'draft'].includes(data.status) ? data.status : 'draft';
-  if (REQUIRE_REVIEW_FOR_ACTIVE && needsActivationCheck(old.status, nextStatus)) {
-    return res.status(409).json({ ok: false, error: 'review_not_ok' });
-  }
-const slug = old.slug || await uniqueSlug(slugify(data.name), id);
-const now = Date.now(), first = paths[0];
-
-
-
 // Product Code এবং Product SKU আগে তৈরি হবে
 const shortCode = old.shortCode || await allocateProductCode(id);
 
@@ -267,10 +235,10 @@ const sku = String(
   .trim()
   .toUpperCase();
 
-if (!sku) {
+if (!sku || !/^[A-Z0-9_-]{1,100}$/.test(sku)) {
   return res.status(400).json({
     ok: false,
-    error: 'sku_generation_failed'
+    error: 'invalid_or_empty_product_sku'
   });
 }
 
@@ -296,7 +264,46 @@ if (codeRef.exists && codeRef.data()?.productId !== id) {
     error: 'duplicate_short_code'
   });
 }
+
+  const baseRegularPrice = Math.max(0, Number(data.baseRegularPrice) || 0), baseSellingPrice = Math.max(0, Number(data.baseSellingPrice) || 0);
+  if (baseRegularPrice > 0 && baseSellingPrice > baseRegularPrice) return res.status(400).json({ ok: false, error: 'default_selling_price_cannot_exceed_regular_price' });
   
+let variants;
+
+try {
+  variants = normalizeVariants(
+    data.variants,
+    old.variants || {},
+    isCreate,
+    baseRegularPrice,
+    baseSellingPrice,
+    sku
+  );
+
+  assertUniqueVariantBarcodes(variants);
+
+} catch (e) {
+  return res.status(e.status || 400).json({
+    ok: false,
+    error: e.message
+  });
+}
+  if (!Object.keys(variants).length) return res.status(400).json({ ok: false, error: 'at_least_one_variant_required' });
+  
+  const images = Array.isArray(data.images) ? data.images.filter(x => x && x.url).slice(0, 12) : [];
+  if (data.status === 'active' && images.length < 3) return res.status(400).json({ ok: false, error: 'active_product_requires_minimum_3_images' });
+
+  // Saving resets the review mark, so a product can't jump to active straight from the form:
+  // save as draft -> View -> OK mark -> Active (dropdown or bulk).
+  const nextStatus = ['active', 'inactive', 'draft'].includes(data.status) ? data.status : 'draft';
+  if (REQUIRE_REVIEW_FOR_ACTIVE && needsActivationCheck(old.status, nextStatus)) {
+    return res.status(409).json({ ok: false, error: 'review_not_ok' });
+  }
+const slug = old.slug || await uniqueSlug(slugify(data.name), id);
+const now = Date.now(), first = paths[0];
+
+
+
   const final = {
     ...old, ...data, id: undefined, slug, sku, shortCode, barcode,
     brand: String(data.brand || 'Nishat Fashion'),
