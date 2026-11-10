@@ -1,5 +1,6 @@
 import { head, money, esc } from '../helpers.js';
 import { renderPage } from './index.js';
+import { friendlyError } from './product-review.js';
 
 export async function productEditor(root, api, toast, id) {
   let item = {}, privateCost = {}, aiLastGeneratedAt = null;
@@ -13,7 +14,7 @@ export async function productEditor(root, api, toast, id) {
   const tx = await api('/api/categories');
   const collections = (tx.collections || []).filter(c => c.active !== false);
   
-  // ১. লট লিস্ট নিয়ে আসা
+  // ১. লট লিস্ট নিয়ে আসা
   const lotsData = await api('/api/lots');
   const lots = lotsData.items || [];
 
@@ -49,6 +50,7 @@ export async function productEditor(root, api, toast, id) {
     `<tr data-vrow="${i}">
       <td><input type="hidden" data-v="variantSku" value="${esc(v.variantSku || '')}"><input data-v="color" value="${esc(v.color || '')}" placeholder="Black" ${v.variantSku ? 'readonly' : ''}></td>
       <td><input data-v="size" value="${esc(v.size || '')}" placeholder="M" ${v.variantSku ? 'readonly' : ''}></td>
+      <td><input data-v="barcode" data-barcode value="${esc(v.barcode || '')}" placeholder="Scan / লিখুন" maxlength="64" autocomplete="off"></td>
       <td><input data-v="regularPrice" type="number" min="0" value="${Number(v.regularPrice || 0)}"></td>
       <td><input data-v="sellingPrice" type="number" min="0" value="${Number(v.sellingPrice || 0)}"></td>
       <td><input data-v="stock" type="number" min="0" value="${Number(v.stock || 0)}"></td>
@@ -67,15 +69,16 @@ export async function productEditor(root, api, toast, id) {
   ).join('');
 
   content.innerHTML = head(id ? 'Edit product' : 'Add product',
-    'সম্পূর্ণ Product form · Variants · Images · Private cost · Gemini AI',
+    'সম্পূর্ণ Product form · Variants · Barcode · Images · Private cost · Gemini AI',
     `<button class="btn outline" id="back">← Back</button>`) + `
   <form class="card product-form" id="productForm">
     <!-- ১. Basic -->
     <section class="form-section"><h3>১. Basic information</h3>
       <div class="form-grid">
-        ${field('Product name *', 'name', item.name, 'text', 'required maxlength="80"')}
-        ${field('Product SKU *', 'sku', item.sku, 'text', 'required')}
+        ${field('Product name *', 'name', item.name, 'text', 'required maxlength="80" placeholder="যেমন: Premium Cotton Shirt"')}
+        ${field('Product SKU *', 'sku', item.sku, 'text', 'required placeholder="NF-SH-0001"')}
         ${field('Product code (auto generated)', 'shortCode', item.shortCode, 'text', 'readonly placeholder="First save-এর পর তৈরি হবে"')}
+        ${field('Barcode (scan করুন বা লিখুন)', 'barcode', item.barcode, 'text', 'data-barcode maxlength="64" autocomplete="off" placeholder="8901234567890"')}
         ${field('Brand *', 'brand', item.brand || 'Nishat Fashion', 'text', 'required')}
         
         <!-- লট সিলেক্ট ড্রপডাউন -->
@@ -90,7 +93,7 @@ export async function productEditor(root, api, toast, id) {
           <option value="draft" ${item.status === 'draft' || !item.status ? 'selected' : ''}>Draft</option>
           <option value="active" ${item.status === 'active' ? 'selected' : ''}>Active</option>
           <option value="inactive" ${item.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-        </select></div>
+        </select><small class="muted">Active করতে: Draft save → Products-এ View → OK mark → Active</small></div>
         <div class="field"><label>Extra notes for Gemini</label><input name="aiNotes" value="${esc(item.aiNotes || '')}" placeholder="Eid collection, pre-washed cotton"></div>
       </div>
     </section>
@@ -154,9 +157,9 @@ export async function productEditor(root, api, toast, id) {
 
     <!-- ৬. Variants -->
     <section class="form-section"><h3>৬. Variants — Color × Size</h3>
-      <p class="notice">প্রতিটি Color × Size একটি Variant। Save changes চাপলে নতুন Stock Firestore-এ সেভ হবে।</p>
+      <p class="notice">প্রতিটি Color × Size একটি Variant। চাইলে প্রতিটি Variant-এ আলাদা Barcode দিন। Save changes চাপলে নতুন Stock Firestore-এ সেভ হবে।</p>
       <div class="table-wrap"><table class="variant-table"><thead><tr>
-        <th>Color</th><th>Size</th><th>Regular ৳</th><th>Selling ৳</th><th>Stock</th><th>Alert</th><th>Active</th><th></th>
+        <th>Color</th><th>Size</th><th>Barcode</th><th>Regular ৳</th><th>Selling ৳</th><th>Stock</th><th>Alert</th><th>Active</th><th></th>
       </tr></thead><tbody id="variantRows">${variantRows()}</tbody></table></div>
       <button type="button" class="btn secondary" id="addVariant">+ Add variant</button>
     </section>
@@ -184,7 +187,7 @@ export async function productEditor(root, api, toast, id) {
       <div class="field"><label>Variant-wise buy price (SKU=price, comma separated)</label>
         <input id="variantBuyPrice" value="${esc(Object.entries(privateCost.variantBuyPrice || {}).map(([k, v]) => `${k}=${v}`).join(', '))}" placeholder="NF-SH-0001-BLA-M=920">
       </div>
-      <p class="muted">Buy price products collection-এ নয়; productCosts/{productId}-এ সেভ হবে।</p>
+      <p class="muted">Buy price products collection-এ নয়; একটি আলাদা admin-only document (meta/productCosts)-এ সেভ হবে।</p>
       <div id="profitPreview" class="notice"></div>
     </section>
 
@@ -208,6 +211,15 @@ export async function productEditor(root, api, toast, id) {
 
   const form = content.querySelector('#productForm');
   const aiFields = ['shortDescription', 'description', 'washCare', 'tags', 'metaTitle', 'metaDescription'];
+
+  // Barcode scanners press Enter after scanning: don't submit the form, jump to the next barcode box.
+  form.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !e.target.matches('[data-barcode]')) return;
+    e.preventDefault();
+    const all = [...form.querySelectorAll('[data-barcode]')];
+    const next = all[all.indexOf(e.target) + 1];
+    if (next) next.focus();
+  });
 
   aiFields.forEach(name => {
     const el = form.elements[name];
@@ -322,7 +334,7 @@ export async function productEditor(root, api, toast, id) {
 
   form.querySelector('#addVariant').onclick = () => {
     variants = collectVariants();
-    variants.push({ color: '', size: '', regularPrice: 0, sellingPrice: 0, stock: 0, lowStockAlert: 5, isActive: true });
+    variants.push({ color: '', size: '', barcode: '', regularPrice: 0, sellingPrice: 0, stock: 0, lowStockAlert: 5, isActive: true });
     drawVariants();
   };
 
@@ -447,6 +459,8 @@ export async function productEditor(root, api, toast, id) {
       vs.forEach(v => {
         if (!v.variantSku) v.variantSku = `${sku}-${v.color.slice(0, 3).toUpperCase()}-${v.size.toUpperCase()}`.replace(/[^A-Z0-9-]/g, '');
       });
+      const barcodes = vs.map(v => v.barcode).filter(Boolean);
+      if (new Set(barcodes).size !== barcodes.length) throw new Error('একই Barcode একাধিক Variant-এ দেওয়া যাবে না');
       const buyPrice = Number(form.elements.buyPrice.value || 0);
       const variantBuyPrice = {};
       form.querySelector('#variantBuyPrice').value.split(',').map(x => x.trim()).filter(Boolean).forEach(pair => {
@@ -455,7 +469,7 @@ export async function productEditor(root, api, toast, id) {
       });
       const f = new FormData(form);
       const data = {
-        name: f.get('name'), sku, brand: f.get('brand'), status: f.get('status'), lotId: f.get('lotId') || null,
+        name: f.get('name'), sku, barcode: String(f.get('barcode') || '').trim(), brand: f.get('brand'), status: f.get('status'), lotId: f.get('lotId') || null,
         shortCode: f.get('shortCode') || undefined, categoryPaths: selected,
         tags: String(f.get('tags') || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean),
         isNewArrival: f.has('isNewArrival'), isFeatured: f.has('isFeatured'), isBestSeller: f.has('isBestSeller'),
@@ -470,10 +484,10 @@ export async function productEditor(root, api, toast, id) {
       };
       if (id) await api(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(data) });
       else await api('/api/products', { method: 'POST', body: JSON.stringify(data) });
-      toast('Product saved successfully');
+      toast('Product saved successfully. View করে আবার OK mark দিন।');
       await renderPage('products', root, { api, toast });
     } catch (ex) {
-      toast(ex.message);
+      toast(friendlyError(ex));
     } finally {
       b.disabled = false;
       b.textContent = id ? 'Save changes' : 'Create product';
