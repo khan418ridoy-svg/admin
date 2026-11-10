@@ -457,13 +457,7 @@ export async function productEditor(root, api, toast, id) {
       if (!vs.length) throw new Error('কমপক্ষে একটি Variant যোগ করুন');
  const sku = form.elements.sku.value.trim().toUpperCase();
 
-vs.forEach(v => {
-  if (!v.variantSku && sku) {
-    v.variantSku = `${sku}-${v.color.slice(0, 3).toUpperCase()}-${v.size.toUpperCase()}`
-      .replace(/[^A-Z0-9-]/g, '');
-  }
-});
-   const sku = form.elements.sku.value.trim().toUpperCase();
+
 
 const barcodes = vs.map(v => v.barcode).filter(Boolean);
 if (new Set(barcodes).size !== barcodes.length) {
