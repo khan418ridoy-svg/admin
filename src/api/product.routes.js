@@ -6,7 +6,14 @@ const { db, FieldValue } = require('../config/firebase');
 const { buildCatalogItem } = require('../services/catalog/toItem');
 const productCache = require('../services/catalog/productCache');
 const { ensureStockLots, syncVariantTotals } = require('../services/inventory/stockLots');
-const { cleanBarcode, assertUniqueVariantBarcodes } = require('../services/products/barcode');
+const {
+  cleanBarcode,
+  barcodeDocRef,
+  buildVariantSku,
+  assertUniqueVariantBarcodes,
+  syncBarcodeRegistry
+} = require('../services/products/barcode');
+
 const costStore = require('../services/products/costStore');
 const { allocateProductCode } = require('../services/products/productCode');
 const { REQUIRE_REVIEW_FOR_ACTIVE, activationBlocker, needsActivationCheck } = require('../services/products/activationGate');
@@ -77,6 +84,9 @@ async function mapTaxonomy(paths) {
     return { ...p, collectionName: c.name, categoryName: k.name, subCategoryName: s?.name || '' };
   });
 }
+
+
+
 function normalizeVariants(
   input,
   old = {},
@@ -86,7 +96,10 @@ function normalizeVariants(
   productSku = ''
 ) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw Object.assign(new Error('variants_must_be_map'), { status: 400 });
+    throw Object.assign(
+      new Error('variants_must_be_map'),
+      { status: 400 }
+    );
   }
 
   const out = {};
@@ -94,32 +107,34 @@ function normalizeVariants(
   for (const [inputSku, v0] of Object.entries(input)) {
     const v = { ...v0 };
 
-    if (!v.color || !v.size) {
+    const color = String(v.color || '').trim();
+    const size = String(v.size || '').trim();
+
+    if (!color || !size) {
       throw Object.assign(
         new Error(`variant_color_size_required:${inputSku}`),
         { status: 400 }
       );
     }
 
-    // Product SKU + Color + Size দিয়ে Variant SKU তৈরি
-    const generatedSku = (
-      String(productSku) + '-' +
-      String(v.color).trim() + '-' +
-      String(v.size).trim()
+    // Generate Variant SKU.
+    const generatedSku = buildVariantSku(
+      productSku,
+      color,
+      size
+    );
+
+    // Preserve existing SKU, but generate for pending/new variants.
+    const sku = (
+      !inputSku ||
+      inputSku.startsWith('__pending_variant_')
     )
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 100);
+      ? generatedSku
+      : String(v.variantSku || inputSku).trim().toUpperCase();
 
-    const sku =
-      (!inputSku || inputSku.startsWith('__pending_variant_'))
-        ? generatedSku
-        : inputSku;
-
-    if (!sku) {
+    if (!/^[A-Z0-9_-]{1,64}$/.test(sku)) {
       throw Object.assign(
-        new Error('variant_sku_generation_failed'),
+        new Error('invalid_variant_sku'),
         { status: 400 }
       );
     }
@@ -131,14 +146,14 @@ function normalizeVariants(
       );
     }
 
-const prior = old[sku];
+    const prior = old[sku];
 
-const stock = prior
-  ? Number(prior.stock || 0)
-  : Math.max(0, Number(v.stock) || 0);
+    const stock = prior
+      ? Number(prior.stock || 0)
+      : Math.max(0, Number(v.stock) || 0);
 
-// Auto Barcode = Variant SKU
-const barcode = cleanBarcode(v.barcode) || sku;
+    // Manual Barcode থাকলে সেটি, না থাকলে Variant SKU.
+    const barcode = cleanBarcode(v.barcode) || sku;
 
     const regularPrice = Math.max(
       0,
@@ -155,9 +170,10 @@ const barcode = cleanBarcode(v.barcode) || sku;
     );
 
     out[sku] = {
-      color: String(v.color),
-      size: String(v.size),
+      color,
+      size,
       variantSku: sku,
+      barcode,
 
       regularPrice,
       sellingPrice,
@@ -178,26 +194,28 @@ const barcode = cleanBarcode(v.barcode) || sku;
         Number(v.lowStockAlert ?? 5)
       ),
 
-      isActive: v.isActive !== false,
-
-      ...(barcode ? { barcode } : {})
+      isActive: v.isActive !== false
     };
   }
 
-  // আগে থেকে থাকা Variant মুছে যাবে না
-for (const [sku, v] of Object.entries(old || {})) {
-  if (!out[sku]) {
-    out[sku] = {
-      ...v,
-      variantSku: v.variantSku || sku,
-      barcode: cleanBarcode(v.barcode) || sku,
-      stock: Number(v.stock || 0)
-    };
+  // Preserve old variants that were not submitted.
+  for (const [sku, v] of Object.entries(old || {})) {
+    if (!out[sku]) {
+      out[sku] = {
+        ...v,
+        variantSku: v.variantSku || sku,
+        barcode: cleanBarcode(v.barcode) || sku,
+        stock: Number(v.stock || 0)
+      };
+    }
   }
-}
 
   return out;
 }
+
+
+
+
 async function save(req, res, isCreate) {
   const data = req.body || {};
 
@@ -243,7 +261,7 @@ const sku = String(
   .trim()
   .toUpperCase();
 
-if (!sku || !/^[A-Z0-9_-]{1,100}$/.test(sku)) {
+if (!sku || !/^[A-Z0-9_-]{1,64}$/.test(sku)) {
   return res.status(400).json({
     ok: false,
     error: 'invalid_or_empty_product_sku'
@@ -256,17 +274,7 @@ if (!barcode) {
 }
 
 // Auto-generated এবং manual উভয় Barcode-এর duplicate check
-const barcodeQuery = await db.collection('products')
-  .where('barcode', '==', barcode)
-  .limit(2)
-  .get();
 
-if (barcodeQuery.docs.some(d => d.id !== id)) {
-  return res.status(409).json({
-    ok: false,
-    error: 'duplicate_barcode'
-  });
-}
 
 // Duplicate SKU যাচাই
 const dup = await db.collection('products')
@@ -306,19 +314,9 @@ try {
     sku
   );
 
-  assertUniqueVariantBarcodes(variants);
+assertUniqueVariantBarcodes(variants, barcode);
 
-// Product Barcode এবং Variant Barcode একই হতে পারবে না
-const variantBarcodeList = Object.values(variants)
-  .map(v => cleanBarcode(v.barcode))
-  .filter(Boolean);
 
-if (variantBarcodeList.includes(barcode)) {
-  throw Object.assign(
-    new Error('product_and_variant_barcode_duplicate'),
-    { status: 409 }
-  );
-}
 
   
 } catch (e) {
@@ -369,16 +367,69 @@ const now = Date.now(), first = paths[0];
   const result = summarize(final);
   result.cacheUpdatedAt = now;
   
-  const batch = db.batch();
-  batch.set(ref, result);
 
-  // Private cost goes into the single meta/productCosts document.
-  costStore.addCostToBatch(batch, id, data, now);
-  
-  batch.set(db.doc('meta/catalog'), { items: { [id]: buildCatalogItem(id, result) }, updatedAt: now }, { merge: true });
-  batch.set(db.doc(`shortCodes/${shortCode}`), { productId: id, sku, updatedAt: now }, { merge: true });
-  
-  await batch.commit();
+// Product + Variant barcode claims.
+const barcodeEntries = [
+  {
+    barcode,
+    type: 'product'
+  },
+
+  ...Object.entries(variants).map(([variantSku, variant]) => ({
+    barcode: variant.barcode || variantSku,
+    type: 'variant',
+    variantSku
+  }))
+];
+
+// All product writes + barcode registry writes in one transaction.
+await db.runTransaction(async tx => {
+  const currentSnap = await tx.get(ref);
+
+  if (isCreate && currentSnap.exists) {
+    throw Object.assign(
+      new Error('product_already_exists'),
+      { status: 409 }
+    );
+  }
+
+  if (!isCreate && !currentSnap.exists) {
+    throw Object.assign(
+      new Error('product_not_found'),
+      { status: 404 }
+    );
+  }
+
+  // Global duplicate checking and old claim cleanup.
+  await syncBarcodeRegistry(tx, id, barcodeEntries);
+
+  tx.set(ref, result);
+
+  // Private purchase costs.
+  costStore.addCostToBatch(tx, id, data, now);
+
+  tx.set(
+    db.doc('meta/catalog'),
+    {
+      items: {
+        [id]: buildCatalogItem(id, result)
+      },
+      updatedAt: now
+    },
+    { merge: true }
+  );
+
+  tx.set(
+    db.doc(`shortCodes/${shortCode}`),
+    {
+      productId: id,
+      sku,
+      updatedAt: now
+    },
+    { merge: true }
+  );
+});
+
 
   // Draft সেভ করলে ক্যাশে আপডেট হবে না
   const finalStatus = result.status || data.status || 'draft';
@@ -524,6 +575,10 @@ router.post('/:id/stock', asyncHandler(async (req, res) => {
     let stockLots = ensureStockLots(product, pSnap.id);
     const added = [];
 
+    const newBarcodeClaims = [];
+const newBarcodeKeys = new Set();
+
+    
     for (const entry of entries) {
       const qty = Number(entry.qty);
       if (!Number.isSafeInteger(qty) || qty <= 0 || qty > 1000000) throw Object.assign(new Error('invalid_stock_quantity'), { status: 400 });
@@ -534,17 +589,61 @@ router.post('/:id/stock', asyncHandler(async (req, res) => {
         if (!color || !size) throw Object.assign(new Error('new_variant_color_size_required'), { status: 400 });
         const exists = Object.entries(variants).some(([, v]) => String(v.color).toLowerCase() === color.toLowerCase() && String(v.size).toLowerCase() === size.toLowerCase());
         if (exists) throw Object.assign(new Error('variant_already_exists'), { status: 409 });
-        const suffix = `${color}-${size}`.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
-        sku = `${String(product.sku || 'SKU').toUpperCase()}-${suffix}`.slice(0, 100);
+        sku = buildVariantSku(
+  product.sku || 'SKU',
+  color,
+  size
+);
         if (variants[sku]) throw Object.assign(new Error('variant_sku_already_exists'), { status: 409 });
         const regularPrice = Math.max(0, Number(entry.newVariant.regularPrice) || Number(product.baseRegularPrice) || 0);
         const sellingPrice = Math.max(0, Number(entry.newVariant.sellingPrice) || Number(product.baseSellingPrice) || 0);
         if (regularPrice > 0 && sellingPrice > regularPrice) throw Object.assign(new Error('variant_price_invalid'), { status: 400 });
-       variants[sku] = {
+       
+        const barcode = cleanBarcode(
+  entry.newVariant.barcode
+) || sku;
+const barcodeRef = barcodeDocRef(barcode);
+const barcodeSnap = await tx.get(barcodeRef);
+
+if (newBarcodeKeys.has(barcode.toUpperCase())) {
+  throw Object.assign(
+    new Error('duplicate_barcode'),
+    { status: 409 }
+  );
+}
+
+newBarcodeKeys.add(barcode.toUpperCase());
+
+if (barcodeSnap.exists) {
+  const owner = barcodeSnap.data() || {};
+
+  const sameOwner =
+    owner.productId === pSnap.id &&
+    owner.type === 'variant' &&
+    owner.variantSku === sku;
+
+  if (!sameOwner) {
+    throw Object.assign(
+      new Error(`duplicate_barcode:${barcode}`),
+      { status: 409 }
+    );
+  }
+}
+
+newBarcodeClaims.push({
+  ref: barcodeRef,
+  barcode,
+  productId: pSnap.id,
+  type: 'variant',
+  variantSku: sku,
+  previous: barcodeSnap.exists ? barcodeSnap.data() : null
+});
+        
+        variants[sku] = {
   color,
   size,
   variantSku: sku,
-  barcode: sku,
+  barcode,
 
   regularPrice,
   sellingPrice,
@@ -588,6 +687,23 @@ router.post('/:id/stock', asyncHandler(async (req, res) => {
     const summary = summarize(updated);
     summary.updatedAt = Date.now();
     summary.cacheUpdatedAt = Date.now();
+
+// Save newly created Variant Barcode claims.
+for (const claim of newBarcodeClaims) {
+  const now = Date.now();
+
+  tx.set(claim.ref, {
+    barcode: claim.barcode,
+    productId: claim.productId,
+    type: claim.type,
+    variantSku: claim.variantSku,
+    format: 'CODE128',
+    createdAt: claim.previous?.createdAt || now,
+    updatedAt: now
+  });
+}
+
+    
     const version = Number(versionSnap.data()?.version || 0) + 1;
     const changes = [...(Array.isArray(versionSnap.data()?.changes) ? versionSnap.data().changes : []), { version, id: pSnap.id, deleted: false, at: Date.now() }].slice(-300);
     tx.update(productRef, {
