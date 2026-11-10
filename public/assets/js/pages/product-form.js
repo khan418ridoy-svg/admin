@@ -76,7 +76,7 @@ export async function productEditor(root, api, toast, id) {
     <section class="form-section"><h3>১. Basic information</h3>
       <div class="form-grid">
         ${field('Product name *', 'name', item.name, 'text', 'required maxlength="80" placeholder="যেমন: Premium Cotton Shirt"')}
-        ${field('Product SKU *', 'sku', item.sku, 'text', 'required placeholder="NF-SH-0001"')}
+        ${field('Product SKU (Auto generated if empty)', 'sku', item.sku, 'text', 'placeholder="খালি রাখলে Auto SKU তৈরি হবে"')}
         ${field('Product code (auto generated)', 'shortCode', item.shortCode, 'text', 'readonly placeholder="First save-এর পর তৈরি হবে"')}
         ${field('Barcode (scan করুন বা লিখুন)', 'barcode', item.barcode, 'text', 'data-barcode maxlength="64" autocomplete="off" placeholder="8901234567890"')}
         ${field('Brand *', 'brand', item.brand || 'Nishat Fashion', 'text', 'required')}
