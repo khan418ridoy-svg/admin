@@ -12,32 +12,75 @@ const MAX_DOC_BYTES = 900 * 1024;
 const costDoc = () => db.doc(DOC_PATH);
 
 // Picks only the cost fields that the request actually sent.
+// Picks only valid private cost fields
 function pickCostFields(data) {
   const cost = {};
-  if (data.buyPrice !== undefined) cost.buyPrice = Math.max(0, Number(data.buyPrice) || 0);
-  if (data.variantBuyPrice && typeof data.variantBuyPrice === 'object' && !Array.isArray(data.variantBuyPrice)) {
-    cost.variantBuyPrice = data.variantBuyPrice;
+
+  if (data.buyPrice !== undefined) {
+    cost.buyPrice = Math.max(0, Number(data.buyPrice) || 0);
   }
-  if (data.supplier !== undefined) cost.supplier = String(data.supplier);
-  if (data.purchaseNote !== undefined) cost.purchaseNote = String(data.purchaseNote);
+
+  if (
+    data.variantBuyPrice &&
+    typeof data.variantBuyPrice === 'object' &&
+    !Array.isArray(data.variantBuyPrice)
+  ) {
+    const cleanVariantCosts = {};
+
+    for (const [key, value] of Object.entries(data.variantBuyPrice)) {
+      const cleanKey = String(key || '').trim();
+      const amount = Number(value);
+
+      if (cleanKey && Number.isFinite(amount) && amount >= 0) {
+        cleanVariantCosts[cleanKey] = amount;
+      }
+    }
+
+    cost.variantBuyPrice = cleanVariantCosts;
+  }
+
+  if (data.supplier !== undefined) {
+    cost.supplier = String(data.supplier);
+  }
+
+  if (data.purchaseNote !== undefined) {
+    cost.purchaseNote = String(data.purchaseNote);
+  }
+
   return cost;
 }
 
-// Adds the cost write to a batch. Only the sent fields are replaced (others stay).
-// Returns false when the request carried no cost fields.
+
+// Adds private cost to Firestore batch
 function addCostToBatch(batch, productId, data, now) {
+  if (!productId || typeof productId !== 'string') {
+    throw Object.assign(
+      new Error('invalid_product_id_for_cost'),
+      { status: 400 }
+    );
+  }
+
   const cost = pickCostFields(data);
-  const keys = Object.keys(cost);
-  if (!keys.length) return false;
+
+  if (!Object.keys(cost).length) {
+    return false;
+  }
+
   cost.updatedAt = now;
+
   batch.set(
     costDoc(),
-    { items: { [productId]: cost }, updatedAt: now },
-     function addCostToBatch(batch, productId, data, now) {   if (!productId || typeof productId !== 'string') {     throw Object.assign(new Error('invalid_product_id_for_cost'), { status: 400 });   }    const cost = pickCostFields(data);   if (!Object.keys(cost).length) return false;    cost.updatedAt = now;    batch.set(     costDoc(),     {       items: {         [productId]: cost       },       updatedAt: now     },     { merge: true }   );    return true; }
+    {
+      items: {
+        [productId]: cost
+      },
+      updatedAt: now
+    },
+    { merge: true }
   );
+
   return true;
 }
-
 // One product's cost. Falls back to the old productCosts/{id} document until migration is done.
 async function readCost(productId) {
   const snap = await costDoc().get();
