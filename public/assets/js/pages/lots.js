@@ -10,20 +10,35 @@ export async function renderLots(root, { api, toast }) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Lot No</th><th>Date</th><th>Total Buy</th><th>Total Sell</th><th>Profit</th><th>Stock</th><th>Days</th><th>Action</th>
+            <th>Lot No</th>
+            <th>Date</th>
+            <th>Total Sell</th>
+            <th>Stock Cost</th>
+            <th>Profit/Loss</th>
+            <th>Stock</th>
+            <th>Days</th>
+            <th>Action</th>
           </tr></thead>
-          <tbody>${lots.map(l => `
+          <tbody>${lots.map(l => {
+            const isProfit = l.profit >= 0;
+            const profitColor = isProfit ? '#159b72' : '#d64d63';
+            const profitSign = isProfit ? '+' : '';
+            return `
             <tr>
-              <td><strong>${esc(l.lotNo)}</strong></td>
-              <td>${new Date(l.createdAt).toLocaleDateString('en-GB')}</td>
-              <td>${money(l.totalBuyCost)}</td>
-              <td>${money(l.totalSell)}</td>
-              <td class="${l.profit >= 0 ? 'text-green' : 'text-red'}" style="color:${l.profit >= 0 ? 'green' : 'red'}">${money(l.profit)}</td>
-              <td>${l.currentStock} pcs</td>
-              <td>${l.daysPassed} days</td>
-              <td><button class="btn outline small" data-view-lot="${esc(l.id)}">View Details</button></td>
+              <td data-label="Lot No"><strong>${esc(l.lotNo)}</strong></td>
+              <td data-label="Date">${new Date(l.createdAt).toLocaleDateString('en-GB')}</td>
+              <td data-label="Total Sell">${money(l.totalSell)}</td>
+              <td data-label="Stock Cost">${money(l.stockCost || 0)}</td>
+              <td data-label="Profit/Loss" style="color: ${profitColor}; font-weight: bold;">
+                ${profitSign}${money(l.profit)}
+              </td>
+              <td data-label="Stock">${l.currentStock} pcs</td>
+              <td data-label="Days">${l.daysPassed} days</td>
+              <td data-label="Action" class="actions">
+                <button class="btn outline small" data-view-lot="${esc(l.id)}">View Details</button>
+              </td>
             </tr>
-          `).join('') || '<tr><td colspan="8" class="empty">কোনো লট তৈরি করা হয়নি।</td></tr>'}</tbody>
+          `}).join('') || '<tr><td colspan="8" class="empty">কোনো লট তৈরি করা হয়নি।</td></tr>'}</tbody>
         </table>
       </div>
     </div>
@@ -55,7 +70,9 @@ export async function renderLots(root, { api, toast }) {
       html += `<div class="grid two-col">${Object.entries(details.categories).map(([cat, prods]) => `
         <article class="card">
           <h4 style="margin-top:0;">${esc(cat)} (${prods.length} items)</h4>
-          <ul>${prods.map(p => `<li>${esc(p.name)} - ${p.totalStock} pcs</li>`).join('')}</ul>
+          <ul>
+            ${prods.map(p => `<li>${esc(p.name)} - ${p.totalStock} pcs <span class="muted">(৳${Number(p.stockValue || 0).toLocaleString()})</span></li>`).join('')}
+          </ul>
         </article>
       `).join('')}</div>`;
     }
