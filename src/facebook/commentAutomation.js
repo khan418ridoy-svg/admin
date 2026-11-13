@@ -35,9 +35,9 @@ function isBadComment(value) {
 async function pageToken() {
   const snap = await db.doc('meta/privateFacebook').get();
 
-  const token = snap.exists
-    ? snap.data().pageAccessToken
-    : process.env.META_PAGE_TOKEN;
+  const token =
+    (snap.exists && snap.data()?.pageAccessToken) ||
+    process.env.META_PAGE_TOKEN;
 
   if (!token) {
     throw new Error('meta_page_token_missing');
@@ -51,7 +51,9 @@ async function graphPost(path, token, body) {
     `${graph}/${path}?access_token=${encodeURIComponent(token)}`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(12000)
     }
@@ -81,7 +83,9 @@ async function getPostText(postId, token) {
 
   const response = await fetch(
     `${graph}/${encodeURIComponent(postId)}?fields=${fields}&access_token=${encodeURIComponent(token)}`,
-    { signal: AbortSignal.timeout(10000) }
+    {
+      signal: AbortSignal.timeout(10000)
+    }
   );
 
   const data = await response.json().catch(() => ({}));
@@ -156,7 +160,7 @@ async function claimEvent(eventRef, eventData) {
     if (snap.exists) {
       previous = snap.data() || {};
 
-      // A successful private reply must never be sent twice.
+      // Never send a successful private reply twice.
       if (
         previous.privateReplyStatus === 'sent' ||
         previous.status === 'replied' ||
@@ -166,11 +170,14 @@ async function claimEvent(eventRef, eventData) {
         return;
       }
 
-      // Another worker may currently be processing this comment.
+      // Prevent concurrent processing.
       if (
         previous.status === 'processing' &&
-        now - Number(previous.processingStartedAt || previous.createdAt || 0) <
-          PROCESSING_TIMEOUT
+        now - Number(
+          previous.processingStartedAt ||
+          previous.createdAt ||
+          0
+        ) < PROCESSING_TIMEOUT
       ) {
         return;
       }
@@ -209,10 +216,13 @@ async function handleComment(change, pageId) {
   const fromId = String(value.from?.id || '');
 
   if (!commentId || !commentText) {
-    console.warn('[comment-automation] comment ID or message missing');
+    console.warn(
+      '[comment-automation] comment ID or message missing'
+    );
     return;
   }
 
+  // Ignore comments written by our own Page.
   if (fromId && fromId === String(pageId)) {
     return;
   }
@@ -251,6 +261,7 @@ async function handleComment(change, pageId) {
       commentId
     );
 
+    // Moderation.
     if (isBadComment(commentText)) {
       await eventRef.set(
         {
@@ -271,7 +282,7 @@ async function handleComment(change, pageId) {
 
     const token = await pageToken();
 
-    // Find product information for the private reply.
+    // Find product information.
     let postText = '';
     const postId = String(value.post_id || '');
 
@@ -286,7 +297,10 @@ async function handleComment(change, pageId) {
       }
     }
 
-    const code = extractCode(`${postText}\n${commentText}`);
+    const code = extractCode(
+      `${postText}\n${commentText}`
+    );
+
     let product = null;
 
     if (code) {
@@ -304,16 +318,24 @@ async function handleComment(change, pageId) {
       ? productDetails(product)
       : 'স্যার, আপনার পছন্দের পণ্যটি নিশ্চিতভাবে শনাক্ত করতে পারিনি। অনুগ্রহ করে পোস্টে থাকা Product Code-টি Inbox-এ লিখুন, আমরা বিস্তারিত পাঠিয়ে দেব।';
 
-    // Public reply: independent operation.
-    let publicReplyOk = previous.publicReplyStatus === 'sent';
-    let publicReplyError = previous.publicReplyError || null;
+    // =========================================
+    // 1. PUBLIC COMMENT REPLY
+    // =========================================
+
+    let publicReplyOk =
+      previous.publicReplyStatus === 'sent';
+
+    let publicReplyError =
+      previous.publicReplyError || null;
 
     if (!publicReplyOk) {
       try {
         await graphPost(
           `${encodeURIComponent(commentId)}/comments`,
           token,
-          { message: PUBLIC_REPLY }
+          {
+            message: PUBLIC_REPLY
+          }
         );
 
         publicReplyOk = true;
@@ -332,6 +354,7 @@ async function handleComment(change, pageId) {
           '[comment-automation] public reply sent:',
           commentId
         );
+
       } catch (error) {
         publicReplyOk = false;
         publicReplyError = error.message;
@@ -339,31 +362,49 @@ async function handleComment(change, pageId) {
         await eventRef.set(
           {
             publicReplyStatus: 'failed',
-            publicReplyError: error.message
+            publicReplyError: error.message,
+            publicReplyMetaCode: error.metaCode || null,
+            publicReplyMetaSubcode: error.metaSubcode || null
           },
           { merge: true }
         );
 
         console.error(
           '[comment-automation] public reply failed:',
-          commentId,
-          error.message,
-          'Meta code:',
-          error.metaCode || 'N/A'
+          {
+            commentId,
+            error: error.message,
+            metaCode: error.metaCode || null,
+            metaSubcode: error.metaSubcode || null
+          }
         );
       }
     }
 
-    // Private inbox reply: always attempt, even if public reply failed.
-    let privateReplyOk = previous.privateReplyStatus === 'sent';
-    let privateReplyError = previous.privateReplyError || null;
+    // =========================================
+    // 2. PRIVATE INBOX REPLY
+    // Facebook Page Send API
+    // =========================================
+
+    let privateReplyOk =
+      previous.privateReplyStatus === 'sent';
+
+    let privateReplyError =
+      previous.privateReplyError || null;
 
     if (!privateReplyOk) {
       try {
-        await graphPost(
-          `${encodeURIComponent(commentId)}/private_replies`,
+        const result = await graphPost(
+          `${encodeURIComponent(String(pageId))}/messages`,
           token,
-          { message: privateMessage }
+          {
+            recipient: {
+              comment_id: String(commentId)
+            },
+            message: {
+              text: String(privateMessage)
+            }
+          }
         );
 
         privateReplyOk = true;
@@ -374,6 +415,8 @@ async function handleComment(change, pageId) {
             privateReplyStatus: 'sent',
             privateRepliedAt: Date.now(),
             privateReplyError: null,
+            privateMessageId: result.message_id || null,
+            privateRecipientId: result.recipient_id || null,
             productId: product?.id || null,
             productCode: code || null
           },
@@ -382,8 +425,13 @@ async function handleComment(change, pageId) {
 
         console.info(
           '[comment-automation] private inbox reply sent:',
-          commentId
+          {
+            commentId,
+            messageId: result.message_id || null,
+            recipientId: result.recipient_id || null
+          }
         );
+
       } catch (error) {
         privateReplyOk = false;
         privateReplyError = error.message;
@@ -392,6 +440,8 @@ async function handleComment(change, pageId) {
           {
             privateReplyStatus: 'failed',
             privateReplyError: error.message,
+            privateReplyMetaCode: error.metaCode || null,
+            privateReplyMetaSubcode: error.metaSubcode || null,
             productId: product?.id || null,
             productCode: code || null
           },
@@ -400,13 +450,20 @@ async function handleComment(change, pageId) {
 
         console.error(
           '[comment-automation] private reply failed:',
-          commentId,
-          error.message,
-          'Meta code:',
-          error.metaCode || 'N/A'
+          {
+            commentId,
+            pageId,
+            error: error.message,
+            metaCode: error.metaCode || null,
+            metaSubcode: error.metaSubcode || null
+          }
         );
       }
     }
+
+    // =========================================
+    // 3. FINAL EVENT STATUS
+    // =========================================
 
     let status = 'failed';
 
@@ -439,6 +496,7 @@ async function handleComment(change, pageId) {
       'status:',
       status
     );
+
   } catch (error) {
     await eventRef.set(
       {
