@@ -177,3 +177,80 @@
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+
+
+/* ============================================
+   TABLE TO CARD (Mobile View) - Horizontal fix
+   ============================================ */
+@media (max-width: 768px) {
+  /* ১. টেবিল রেসপন্সিভ করা */
+  .table-wrap, table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important; /* ওভারফ্লো বন্ধ করতে */
+    overflow: visible;
+  }
+  
+  thead { display: none; }
+  tbody { display: flex; flex-direction: column; gap: 16px; }
+  
+  /* ২. প্রতিটি রো-কে কার্ড বানানো */
+  tr {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  
+  /* ৩. প্রতিটি সেল-কে লম্বালম্বি (Column) করা */
+  td {
+    display: flex !important;
+    flex-direction: column !important; /* Horizontal থেকে Vertical */
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    padding: 10px 0 !important;
+    border-bottom: 1px dashed var(--line) !important;
+    text-align: left !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 4px;
+  }
+  
+  td:last-child {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* ৪. মোবাইলে টেবিলের লেবেল (data-label) দেখানো */
+  td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  /* ৫. অ্যাকশন বাটন পুরো প্রস্থ নেবে */
+  td.actions {
+    align-items: stretch !important;
+  }
+  
+  td.actions .order-status-controls {
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  td.actions select, 
+  td.actions input, 
+  td.actions textarea, 
+  td.actions button {
+    width: 100% !important;
+  }
+}
