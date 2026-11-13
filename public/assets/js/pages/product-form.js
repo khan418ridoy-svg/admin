@@ -46,19 +46,66 @@ export async function productEditor(root, api, toast, id) {
   const field = (label, name, value = '', type = 'text', extra = '') =>
     `<div class="field"><label>${label}</label><input name="${name}" type="${type}" value="${esc(value ?? '')}" ${extra}></div>`;
 
-  const variantRows = () => variants.map((v, i) =>
-    `<tr data-vrow="${i}">
-      <td><input type="hidden" data-v="variantSku" value="${esc(v.variantSku || '')}"><input data-v="color" value="${esc(v.color || '')}" placeholder="Black" ${v.variantSku ? 'readonly' : ''}></td>
-      <td><input data-v="size" value="${esc(v.size || '')}" placeholder="M" ${v.variantSku ? 'readonly' : ''}></td>
-      <td><input data-v="barcode" data-barcode value="${esc(v.barcode || '')}" placeholder="Scan / লিখুন" maxlength="64" autocomplete="off"></td>
-      <td><input data-v="regularPrice" type="number" min="0" value="${Number(v.regularPrice || 0)}"></td>
-      <td><input data-v="sellingPrice" type="number" min="0" value="${Number(v.sellingPrice || 0)}"></td>
-      <td><input data-v="stock" type="number" min="0" value="${Number(v.stock || 0)}"></td>
-      <td><input data-v="lowStockAlert" type="number" min="0" value="${Number(v.lowStockAlert ?? 5)}"></td>
-      <td><label class="inline-check"><input data-v="isActive" type="checkbox" ${v.isActive !== false ? 'checked' : ''}> Active</label></td>
-      <td><button type="button" class="btn danger small" data-remove-v="${i}" ${v.variantSku ? 'disabled title="Existing variant is retained; deactivate it instead"' : ''}>Remove</button></td>
-    </tr>`
-  ).join('');
+  // Helper to group variants by color
+  const getGroupedVariants = () => {
+    const groups = [];
+    const map = new Map();
+    variants.forEach((v, i) => {
+      const colorKey = v.color || '__EMPTY__';
+      if (!map.has(colorKey)) {
+        map.set(colorKey, { color: v.color || '', items: [] });
+        groups.push(map.get(colorKey));
+      }
+      map.get(colorKey).items.push({ ...v, originalIndex: i });
+    });
+    return groups;
+  };
+
+  const variantRows = () => {
+    const groups = getGroupedVariants();
+    if (!groups.length) return '';
+
+    return groups.map((group, gIndex) => {
+      const isColorLocked = group.items.some(v => v.variantSku);
+      const colorHeader = `
+        <tr class="color-group-header" style="background:#f8f9fa;">
+          <td colspan="9" style="padding: 10px; border-bottom: 2px solid #dee2e6;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <strong>Color:</strong>
+              <input data-group-color="${gIndex}" value="${esc(group.color)}" placeholder="e.g. Red" ${isColorLocked ? 'readonly' : ''} style="font-weight:bold; width: 200px;">
+              <button type="button" class="btn danger small" data-remove-group="${gIndex}" ${isColorLocked ? 'disabled title="Existing variants are retained"' : ''}>Remove Color Group</button>
+            </div>
+          </td>
+        </tr>
+      `;
+
+      const sizeRows = group.items.map((v) => {
+        const i = v.originalIndex;
+        return `
+        <tr data-vrow="${i}">
+          <td class="muted" style="text-align:center; vertical-align:middle;">↳</td>
+          <td><input type="hidden" data-v="variantSku" value="${esc(v.variantSku || '')}"><input data-v="color" value="${esc(v.color || '')}" type="hidden"><input data-v="size" value="${esc(v.size || '')}" placeholder="Size (e.g. M)" ${v.variantSku ? 'readonly' : ''}></td>
+          <td><input data-v="barcode" data-barcode value="${esc(v.barcode || '')}" placeholder="Scan / লিখুন" maxlength="64" autocomplete="off"></td>
+          <td><input data-v="regularPrice" type="number" min="0" value="${Number(v.regularPrice || 0)}"></td>
+          <td><input data-v="sellingPrice" type="number" min="0" value="${Number(v.sellingPrice || 0)}"></td>
+          <td><input data-v="stock" type="number" min="0" value="${Number(v.stock || 0)}"></td>
+          <td><input data-v="lowStockAlert" type="number" min="0" value="${Number(v.lowStockAlert ?? 5)}"></td>
+          <td><label class="inline-check"><input data-v="isActive" type="checkbox" ${v.isActive !== false ? 'checked' : ''}> Active</label></td>
+          <td>
+            <button type="button" class="btn danger small" data-remove-v="${i}" ${v.variantSku ? 'disabled title="Existing variant is retained; deactivate it instead"' : ''}>Remove Size</button>
+          </td>
+        </tr>
+      `}).join('');
+
+      return colorHeader + sizeRows + `
+        <tr>
+          <td colspan="9" style="padding-bottom: 15px;">
+            <button type="button" class="btn secondary small" data-add-size="${gIndex}">+ Add size to this color</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  };
 
   const imageRows = () => images.map((im, i) =>
     `<div class="image-row" data-img="${i}">
@@ -159,9 +206,10 @@ export async function productEditor(root, api, toast, id) {
     <section class="form-section"><h3>৬. Variants — Color × Size</h3>
       <p class="notice">প্রতিটি Color × Size একটি Variant। চাইলে প্রতিটি Variant-এ আলাদা Barcode দিন। Save changes চাপলে নতুন Stock Firestore-এ সেভ হবে।</p>
       <div class="table-wrap"><table class="variant-table"><thead><tr>
-        <th>Color</th><th>Size</th><th>Barcode</th><th>Regular ৳</th><th>Selling ৳</th><th>Stock</th><th>Alert</th><th>Active</th><th></th>
+        <th style="width: 20px;"></th>
+        <th>Size</th><th>Barcode</th><th>Regular ৳</th><th>Selling ৳</th><th>Stock</th><th>Alert</th><th>Active</th><th></th>
       </tr></thead><tbody id="variantRows">${variantRows()}</tbody></table></div>
-      <button type="button" class="btn secondary" id="addVariant">+ Add variant</button>
+      <button type="button" class="btn secondary" id="addVariant">+ Add Color Group</button>
     </section>
 
     <!-- ৭. Images -->
@@ -275,14 +323,45 @@ export async function productEditor(root, api, toast, id) {
   form.querySelectorAll('[data-ai-retry]').forEach(b => b.onclick = () => requestAi([b.dataset.aiRetry]));
 
   const collectVariants = () => {
-    const rows = [...form.querySelectorAll('#variantRows tr')];
-    return rows.map(row => {
-      const v = {};
-      row.querySelectorAll('[data-v]').forEach(el => {
-        v[el.dataset.v] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value || 0) : el.value.trim();
-      });
-      return v;
-    }).filter(v => v.color && v.size);
+    // Update variants array from DOM before collecting
+    // Group colors are read from data-group-color inputs
+    const groupColors = {};
+    form.querySelectorAll('[data-group-color]').forEach(input => {
+      groupColors[input.dataset.groupColor] = input.value.trim();
+    });
+
+    const result = [];
+    const groups = form.querySelectorAll('.color-group-header');
+    
+    groups.forEach((header, gIndex) => {
+      const colorInput = header.querySelector('[data-group-color]');
+      const currentColor = colorInput ? colorInput.value.trim() : '';
+      
+      // Find the rows immediately following this header until the next header
+      let nextEl = header.nextElementSibling;
+      while (nextEl && !nextEl.classList.contains('color-group-header')) {
+        if (nextEl.hasAttribute('data-vrow')) {
+           const v = {};
+           // Add the color from the group header
+           v.color = currentColor;
+           
+           nextEl.querySelectorAll('[data-v]').forEach(el => {
+             if (el.dataset.v !== 'color') { // Ignore hidden color input if exists
+               v[el.dataset.v] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value || 0) : el.value.trim();
+             }
+           });
+           
+           // Update the hidden input in DOM so it stays in sync for the next time
+           const hiddenColor = nextEl.querySelector('[data-v="color"]');
+           if (hiddenColor) hiddenColor.value = v.color;
+           
+           result.push(v);
+        }
+        nextEl = nextEl.nextElementSibling;
+      }
+    });
+
+    return result.filter(v => v.color && v.size); // Final filter for valid variants
   };
 
   const drawVariants = () => {
@@ -292,10 +371,69 @@ export async function productEditor(root, api, toast, id) {
   };
 
   function bindVariantButtons() {
+    // Remove single size
     form.querySelectorAll('[data-remove-v]').forEach(b => b.onclick = () => {
       variants = collectVariants();
       variants.splice(Number(b.dataset.removeV), 1);
       drawVariants();
+    });
+
+    // Remove entire color group
+    form.querySelectorAll('[data-remove-group]').forEach(b => b.onclick = () => {
+      if (!confirm('Are you sure you want to remove this entire color group?')) return;
+      const gIndex = Number(b.dataset.removeGroup);
+      const groups = getGroupedVariants();
+      const groupToRemove = groups[gIndex];
+      if (!groupToRemove) return;
+      
+      // Keep variants that are not in this group
+      const indicesToRemove = new Set(groupToRemove.items.map(v => v.originalIndex));
+      variants = collectVariants().filter((_, i) => !indicesToRemove.has(i));
+      drawVariants();
+    });
+
+    // Add size to specific color group
+    form.querySelectorAll('[data-add-size]').forEach(b => b.onclick = () => {
+      const gIndex = Number(b.dataset.addSize);
+      const groups = getGroupedVariants();
+      const targetGroup = groups[gIndex];
+      if (!targetGroup) return;
+
+      // Collect current data
+      variants = collectVariants();
+      
+      variants.push({
+        color: targetGroup.color,
+        size: '',
+        barcode: '',
+        regularPrice: 0,
+        sellingPrice: 0,
+        stock: 0,
+        lowStockAlert: 5,
+        isActive: true
+      });
+      
+      drawVariants();
+      
+      // Focus on the new size input
+      setTimeout(() => {
+        const rows = form.querySelectorAll('#variantRows tr[data-vrow]');
+        const lastRow = rows[rows.length - 1];
+        if(lastRow) {
+            const sizeInput = lastRow.querySelector('[data-v="size"]');
+            if(sizeInput) sizeInput.focus();
+        }
+      }, 100);
+    });
+
+    // Sync group color changes to underlying variants if needed,
+    // but drawVariants() will rebuild. We just need to update summary on typing.
+    form.querySelectorAll('[data-group-color]').forEach(input => {
+        input.addEventListener('input', () => {
+            // Update the hidden color inputs of the children just in case
+            // But updateSummary uses collectVariants which reads the group header now.
+            updateSummary();
+        });
     });
   }
 
@@ -332,10 +470,28 @@ export async function productEditor(root, api, toast, id) {
   form.elements.baseSellingPrice.addEventListener('input', updateSummary);
   bindVariantButtons();
 
+  // Update the add variant button text to match the new behavior
+  form.querySelector('#addVariant').textContent = '+ Add Color Group';
   form.querySelector('#addVariant').onclick = () => {
     variants = collectVariants();
-    variants.push({ color: '', size: '', barcode: '', regularPrice: 0, sellingPrice: 0, stock: 0, lowStockAlert: 5, isActive: true });
+    // Add a new group with a default empty color and one empty size
+    variants.push({
+      color: '', // Empty color means new group
+      size: '',
+      barcode: '',
+      regularPrice: 0,
+      sellingPrice: 0,
+      stock: 0,
+      lowStockAlert: 5,
+      isActive: true
+    });
     drawVariants();
+    
+    // Focus on the new color input
+    setTimeout(() => {
+        const colorInputs = form.querySelectorAll('[data-group-color]');
+        if(colorInputs.length) colorInputs[colorInputs.length - 1].focus();
+    }, 100);
   };
 
   const renderSelectedPreviews = () => {
