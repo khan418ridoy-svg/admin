@@ -1,0 +1,174 @@
+/* ========================================
+   LOT HISTORY MODAL
+======================================== */
+
+.lot-history-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.lot-history-modal[hidden] {
+  display: none;
+}
+
+.lot-history-dialog {
+  width: 100%;
+  max-width: 850px;
+  max-height: 90vh;
+
+  overflow-y: auto;
+
+  padding: 22px;
+
+  background: #fff;
+  border-radius: 12px;
+}
+
+.lot-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+
+  margin-bottom: 20px;
+}
+
+.lot-history-header h3 {
+  margin: 0;
+}
+
+.lot-history-header p {
+  margin: 6px 0 0;
+  color: #777;
+}
+
+.lot-history-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lot-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  margin-bottom: 20px;
+}
+
+.lot-history-filters input,
+.lot-history-filters select {
+  min-width: 180px;
+  flex: 1;
+}
+
+.lot-history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lot-history-item {
+  display: flex;
+  gap: 14px;
+
+  padding: 15px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.lot-history-indicator {
+  width: 10px;
+  min-width: 10px;
+  height: 10px;
+
+  margin-top: 6px;
+
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.lot-history-indicator.success {
+  background: #16a34a;
+}
+
+.lot-history-indicator.warning {
+  background: #d97706;
+}
+
+.lot-history-indicator.info {
+  background: #2563eb;
+}
+
+.lot-history-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.lot-history-item-header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lot-history-item-header time,
+.lot-history-user {
+  color: #777;
+  font-size: 13px;
+}
+
+.lot-history-description {
+  margin: 10px 0;
+}
+
+.lot-history-variant,
+.lot-history-quantity-change,
+.lot-history-cost {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.lot-history-quantity-change {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lot-history-user {
+  margin-top: 10px;
+}
+
+.lot-history-empty,
+.lot-history-loading,
+.lot-history-error {
+  padding: 25px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .lot-history-modal {
+    padding: 8px;
+  }
+
+  .lot-history-dialog {
+    padding: 15px;
+  }
+
+  .lot-history-header {
+    align-items: flex-start;
+  }
+
+  .lot-history-item-header {
+    flex-direction: column;
+  }
+}

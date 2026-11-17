@@ -1,203 +1,799 @@
-import { api, setToken } from './api.js';
-import { renderLogin } from './login.js';
-import { renderPage } from './pages/index.js';
 
-const nav = [
-  ['dashboard', '▦', 'Dashboard'],
-  ['pos', '🛒', 'POS'],
-  ['products', '▣', 'Products'],
-  ['lots', '📦', 'Lots'],
-  ['categories', '◫', 'Categories'],
-  ['orders', '▤', 'Orders'],
-  ['bot-chats', '◉', 'Bot Chats'],
-  ['low-stock', '▥', 'Low Stock'],
-  ['coupons', '％', 'Coupons'],
-  ['settings', '⚙', 'Settings'],
-  ['facebook-settings', 'f', 'Facebook Settings'],
-  ['ai-settings', '✦', 'AI Settings']
-];
+'use strict';
+
+import {
+  watchAuthentication,
+  showLogin,
+  logoutAdmin
+} from './login.js';
+
+import {
+  initializeRouter,
+  destroyRouter,
+  navigateTo
+} from './pages/index.js';
+
+import {
+  createElement,
+  showToast
+} from './helpers.js';
+
+// ========================================
+// Application Configuration
+// ========================================
+
+const APP_CONFIG = {
+  stylesheet: '/assets/css/admin.css',
+  defaultPage: 'dashboard'
+};
+
+const PAGE_TITLES = {
+  dashboard: 'Dashboard',
+  products: 'Products',
+  lots: 'Purchase Lots',
+  collections: 'Collections',
+  categories: 'Categories',
+  subcategories: 'Subcategories'
+};
+
+// ========================================
+// Application State
+// ========================================
 
 const app = document.getElementById('app');
-let current = 'dashboard', user = null, notificationCursor = Date.now(), notificationTimer = null, audioContext = null;
 
-function layout() {
-  app.innerHTML = `<div class="shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand"><div class="brand-mark">NF</div><div><strong>Nishat Fashion</strong><small>Admin workspace</small></div></div>
-      <div><div class="nav-label">WORKSPACE</div><nav class="nav">${nav.map(([id, ico, label]) =>
-        `<a href="#${id}" data-page="${id}" class="${current === id ? 'active' : ''}"><span class="ico">${ico}</span>${label}</a>`
-      ).join('')}</nav></div>
-      <div class="sidebar-bottom">Nishat Fashion Admin<br>Render · Node.js Backend</div>
-    </aside>
-    <main class="main">
-      <header class="topbar">
-        <div class="top-actions">
-          <button class="btn secondary mobile-menu" id="menuBtn">☰</button>
-          <span class="crumb">Admin / ${nav.find(x => x[0] === current)?.[2] || 'Dashboard'}</span>
-        </div>
-        <div class="top-actions">
-          <span class="muted hide-mobile">${user?.email || ''}</span>
-          <button class="btn secondary" id="notifyBtn" title="Browser notification ও sound চালু করুন">🔔 Enable</button>
-          <div class="avatar">NF</div>
-          <button class="btn outline" id="logoutBtn">Sign out</button>
-        </div>
-      </header>
-      <section class="content" id="pageContent"><div class="empty">Loading…</div></section>
-    </main>
-  </div>`;
+let currentAdmin = null;
+let stopAuthObserver = null;
 
-  document.querySelectorAll('[data-page]').forEach(a =>
-    a.addEventListener('click', e => { e.preventDefault(); go(a.dataset.page); })
+let appInitialized = false;
+
+let authRevision = 0;
+let authQueue = Promise.resolve();
+
+let outsideClickHandler = null;
+
+// ========================================
+// Load CSS
+// ========================================
+
+function loadAdminStylesheet() {
+  const existing = document.getElementById(
+    'admin-stylesheet'
   );
-  document.getElementById('logoutBtn').onclick = () => { stopNotifications(); localStorage.removeItem('nf-token'); location.reload(); };
-  // ১. মেনু বাটনে ক্লিক করলে সাইডবার টগল হবে
-  document.getElementById('menuBtn').onclick = (e) => {
-    e.stopPropagation(); // ক্লিক ইভেন্ট যেন ডকুমেন্টে না ছড়ায়
-    document.getElementById('sidebar').classList.toggle('open');
+
+  if (existing) {
+    return;
+  }
+
+  const stylesheet = createElement('link', {
+    attributes: {
+      id: 'admin-stylesheet',
+      rel: 'stylesheet',
+      href: APP_CONFIG.stylesheet
+    }
+  });
+
+  document.head.appendChild(stylesheet);
+}
+
+// ========================================
+// Application Error
+// ========================================
+
+function renderFatalError(message) {
+  if (!app) {
+    return;
+  }
+
+  const wrapper = createElement('main', {
+    className: 'fatal-error'
+  });
+
+  const title = createElement('h1', {
+    text: 'Application Error'
+  });
+
+  const description = createElement('p', {
+    text: message
+  });
+
+  const reloadButton = createElement('button', {
+    className: 'btn btn-primary',
+    text: 'Reload Application',
+    attributes: {
+      type: 'button'
+    }
+  });
+
+  reloadButton.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  wrapper.append(
+    title,
+    description,
+    reloadButton
+  );
+
+  app.replaceChildren(wrapper);
+}
+
+// ========================================
+// Header Page Title
+// ========================================
+
+function updateHeaderTitle(pageName) {
+  const heading = document.getElementById(
+    'header-page-title'
+  );
+
+  if (!heading) {
+    return;
+  }
+
+  heading.textContent =
+    PAGE_TITLES[pageName] || 'Dashboard';
+}
+
+// ========================================
+// Sidebar State
+// ========================================
+
+function closeSidebar(menuButton) {
+  document.body.classList.remove('sidebar-open');
+
+  if (menuButton) {
+    menuButton.setAttribute(
+      'aria-expanded',
+      'false'
+    );
+  }
+}
+
+// ========================================
+// Admin Layout
+// ========================================
+
+function renderAdminLayout(admin) {
+  currentAdmin = admin;
+
+  // Remove previous outside click listener.
+  if (outsideClickHandler) {
+    document.removeEventListener(
+      'click',
+      outsideClickHandler
+    );
+
+    outsideClickHandler = null;
+  }
+
+  closeSidebar();
+
+  const layout = createElement('div', {
+    className: 'admin-layout'
+  });
+
+  // ======================================
+  // Sidebar
+  // ======================================
+
+  const sidebar = createElement('aside', {
+    className: 'admin-sidebar',
+    attributes: {
+      id: 'admin-sidebar'
+    }
+  });
+
+  // ======================================
+  // Brand
+  // ======================================
+
+  const brand = createElement('div', {
+    className: 'sidebar-brand'
+  });
+
+  const brandLogo = createElement('div', {
+    className: 'sidebar-logo',
+    text: 'NF'
+  });
+
+  const brandName = createElement('span', {
+    text: 'Category Admin'
+  });
+
+  brand.append(
+    brandLogo,
+    brandName
+  );
+
+  // ======================================
+  // Navigation
+  // ======================================
+
+  const navigation = createElement('nav', {
+    className: 'sidebar-navigation',
+    attributes: {
+      'aria-label': 'Main navigation'
+    }
+  });
+
+  // ======================================
+  // Dashboard Link
+  // ======================================
+
+  const dashboardLink = createElement('a', {
+    className: 'sidebar-link',
+    text: '⌂ Dashboard',
+    attributes: {
+      href: '#dashboard'
+    },
+    dataset: {
+      page: 'dashboard'
+    }
+  });
+
+  // ======================================
+  // Products Link
+  // ======================================
+
+  const productsLink = createElement('a', {
+    className: 'sidebar-link',
+    text: '▣ Products',
+    attributes: {
+      href: '#products'
+    },
+    dataset: {
+      page: 'products'
+    }
+  });
+
+
+
+  // ======================================
+// Purchase Lots Link
+// ======================================
+
+const lotsLink = createElement('a', {
+  className: 'sidebar-link',
+  text: '▤ Purchase Lots',
+  attributes: {
+    href: '#lots'
+  },
+  dataset: {
+    page: 'lots'
+  }
+});
+  // ======================================
+  // Collections Group
+  // ======================================
+
+  const collectionsGroup = createElement('div', {
+    className: 'sidebar-group'
+  });
+
+  // Collections Header
+  const collectionsHeader = createElement('div', {
+    className: 'sidebar-group-header'
+  });
+
+  // Collections Page Link
+  const collectionsLink = createElement('a', {
+    className: 'sidebar-link sidebar-group-link',
+    text: '▦ Collections',
+    attributes: {
+      href: '#collections'
+    },
+    dataset: {
+      page: 'collections'
+    }
+  });
+
+  // Submenu Toggle Button
+  const submenuToggle = createElement('button', {
+    className: 'sidebar-group-toggle',
+    text: '⌄',
+    attributes: {
+      type: 'button',
+      'aria-label': 'Toggle Collections submenu',
+      'aria-expanded': 'false',
+      'aria-controls': 'collections-submenu'
+    }
+  });
+
+  collectionsHeader.append(
+    collectionsLink,
+    submenuToggle
+  );
+
+  // ======================================
+  // Collections Submenu
+  // ======================================
+
+  const submenu = createElement('div', {
+    className: 'sidebar-submenu',
+    attributes: {
+      id: 'collections-submenu',
+      hidden: true
+    }
+  });
+
+  const categoriesLink = createElement('a', {
+    className: 'sidebar-sublink',
+    text: '▤ Categories',
+    attributes: {
+      href: '#categories'
+    },
+    dataset: {
+      page: 'categories'
+    }
+  });
+
+  const subcategoriesLink = createElement('a', {
+    className: 'sidebar-sublink',
+    text: '☷ Subcategories',
+    attributes: {
+      href: '#subcategories'
+    },
+    dataset: {
+      page: 'subcategories'
+    }
+  });
+
+  submenu.append(
+    categoriesLink,
+    subcategoriesLink
+  );
+
+  collectionsGroup.append(
+    collectionsHeader,
+    submenu
+  );
+
+  // ======================================
+  // Add Navigation Items
+  // ======================================
+
+  navigation.append(
+    dashboardLink,
+    productsLink,
+    lotsLink,
+    collectionsGroup
+  );
+
+  sidebar.append(
+    brand,
+    navigation
+  );
+
+  // ======================================
+  // Main Area
+  // ======================================
+
+  const main = createElement('div', {
+    className: 'admin-main'
+  });
+
+  // ======================================
+  // Header
+  // ======================================
+
+  const header = createElement('header', {
+    className: 'admin-header'
+  });
+
+  const headerLeft = createElement('div', {
+    className: 'header-left'
+  });
+
+  const menuButton = createElement('button', {
+    className: 'sidebar-toggle',
+    text: '☰',
+    attributes: {
+      type: 'button',
+      'aria-label': 'Toggle navigation',
+      'aria-controls': 'admin-sidebar',
+      'aria-expanded': 'false'
+    }
+  });
+
+  const pageHeading = createElement('h1', {
+    className: 'header-title',
+    text: 'Dashboard',
+    attributes: {
+      id: 'header-page-title'
+    }
+  });
+
+  headerLeft.append(
+    menuButton,
+    pageHeading
+  );
+
+  const headerRight = createElement('div', {
+    className: 'header-right'
+  });
+
+  const adminInfo = createElement('div', {
+    className: 'admin-info'
+  });
+
+  const adminEmail = createElement('span', {
+    className: 'admin-email',
+    text: admin?.email || 'Administrator'
+  });
+
+  const logoutButton = createElement('button', {
+    className: 'btn btn-outline logout-button',
+    text: 'Logout',
+    attributes: {
+      type: 'button'
+    }
+  });
+
+  adminInfo.append(
+    adminEmail,
+    logoutButton
+  );
+
+  headerRight.append(adminInfo);
+
+  header.append(
+    headerLeft,
+    headerRight
+  );
+
+  // ======================================
+  // Page Container
+  // ======================================
+
+  const pageContent = createElement('main', {
+    className: 'page-content',
+    attributes: {
+      id: 'page-content'
+    }
+  });
+
+  main.append(
+    header,
+    pageContent
+  );
+
+  layout.append(
+    sidebar,
+    main
+  );
+
+  app.replaceChildren(layout);
+
+  // ======================================
+  // Collections Submenu Toggle
+  // ======================================
+
+  function setCollectionsExpanded(expanded) {
+    submenu.hidden = !expanded;
+
+    submenuToggle.setAttribute(
+      'aria-expanded',
+      String(expanded)
+    );
+
+    submenuToggle.textContent = expanded
+      ? '⌃'
+      : '⌄';
+
+    collectionsGroup.classList.toggle(
+      'submenu-open',
+      expanded
+    );
+  }
+
+  submenuToggle.addEventListener('click', () => {
+    const isExpanded =
+      submenuToggle.getAttribute('aria-expanded') === 'true';
+
+    setCollectionsExpanded(!isExpanded);
+  });
+
+  // ======================================
+  // Sidebar Toggle
+  // ======================================
+
+  menuButton.addEventListener('click', () => {
+    const isOpen = document.body.classList.toggle(
+      'sidebar-open'
+    );
+
+    menuButton.setAttribute(
+      'aria-expanded',
+      String(isOpen)
+    );
+  });
+
+  // ======================================
+  // Outside Click
+  // ======================================
+
+  outsideClickHandler = event => {
+    if (!document.body.classList.contains('sidebar-open')) {
+      return;
+    }
+
+    const target = event.target;
+
+    const clickedInsideSidebar = sidebar.contains(target);
+    const clickedMenuButton = menuButton.contains(target);
+
+    if (!clickedInsideSidebar && !clickedMenuButton) {
+      closeSidebar(menuButton);
+    }
   };
 
-  // ২. মোবাইলে সাইডবারের বাইরে ক্লিক করলে সাইডবার বন্ধ হবে
-  document.addEventListener('click', (e) => {
-    const sidebar = document.getElementById('sidebar');
-    const menuBtn = document.getElementById('menuBtn');
-    if (sidebar && sidebar.classList.contains('open')) {
-      // যদি ক্লিক সাইডবারের ভেতরে বা মেনু বাটনে না লাগে
-      if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
-        sidebar.classList.remove('open');
-      }
+  document.addEventListener(
+    'click',
+    outsideClickHandler
+  );
+
+  // ======================================
+  // Navigation Events
+  // ======================================
+
+  navigation.addEventListener('click', event => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const link = target.closest('[data-page]');
+
+    if (!link || !navigation.contains(link)) {
+      return;
+    }
+
+    const pageName = link.dataset.page;
+
+    updateHeaderTitle(pageName);
+
+    // Keep Categories and Subcategories visible.
+    if (
+      pageName === 'categories' ||
+      pageName === 'subcategories'
+    ) {
+      setCollectionsExpanded(true);
+    }
+
+    closeSidebar(menuButton);
+  });
+
+  // ======================================
+  // Logout
+  // ======================================
+
+  logoutButton.addEventListener('click', async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to logout?'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    logoutButton.disabled = true;
+    logoutButton.textContent = 'Logging out...';
+
+    try {
+      await logoutAdmin();
+
+    } catch (error) {
+      console.error(
+        '[APP LOGOUT ERROR]',
+        error
+      );
+
+      showToast(
+        'Logout failed. Please try again.',
+        'error'
+      );
+
+    } finally {
+      logoutButton.disabled = false;
+      logoutButton.textContent = 'Logout';
     }
   });
 
-  // ৩. সাইডবারের যেকোনো লিংকে ক্লিক করলে সাইডবার বন্ধ হবে (মোবাইলে)
-  document.querySelectorAll('[data-page]').forEach(a => {
-    a.addEventListener('click', () => {
-      if (window.innerWidth <= 700) {
-        document.getElementById('sidebar').classList.remove('open');
+  return layout;
+}
+
+// ========================================
+// Login Screen
+// ========================================
+
+async function renderLoginScreen() {
+  currentAdmin = null;
+
+  closeSidebar();
+
+  if (outsideClickHandler) {
+    document.removeEventListener(
+      'click',
+      outsideClickHandler
+    );
+
+    outsideClickHandler = null;
+  }
+
+  await showLogin(app);
+}
+
+// ========================================
+// Authentication State Handler
+// ========================================
+
+async function handleAuthentication(state, revision) {
+  try {
+    // Unauthenticated
+    if (!state?.authenticated || !state?.user) {
+      await destroyRouter();
+
+      if (revision !== authRevision) {
+        return;
       }
+
+      currentAdmin = null;
+
+      await renderLoginScreen();
+
+      return;
+    }
+
+    // Authenticated Admin
+    const admin = {
+      ...state.admin,
+      uid: state.admin?.uid || state.user.uid,
+      email: state.admin?.email || state.user.email
+    };
+
+    if (
+      currentAdmin?.uid === admin.uid &&
+      document.querySelector('.admin-layout')
+    ) {
+      return;
+    }
+
+    if (revision !== authRevision) {
+      return;
+    }
+
+    renderAdminLayout(admin);
+
+    await initializeRouter({
+      root: app,
+      initialPage: APP_CONFIG.defaultPage
     });
-  });
-  document.getElementById('notifyBtn').onclick = toggleNotifications;
-  updateNotificationButton();
-  renderPage(current, document.getElementById('pageContent'), { api, toast });
-}
 
-function toast(message) {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = message;
-  document.body.append(el);
-  setTimeout(() => el.remove(), 3500);
-}
-
-function go(page) { current = page; location.hash = page; layout(); }
-
-function updateNotificationButton() {
-  const btn = document.getElementById('notifyBtn');
-  if (!btn) return;
-  const enabled = localStorage.getItem('nf-notifications-enabled') === '1'
-    && ('Notification' in window) && Notification.permission === 'granted';
-  btn.textContent = enabled ? '🔔 ON' : '🔕 OFF';
-  btn.title = enabled ? 'Click to turn notifications off' : 'Click to turn notifications on';
-}
-
-async function toggleNotifications() {
-  if (localStorage.getItem('nf-notifications-enabled') === '1') {
-    localStorage.setItem('nf-notifications-enabled', '0');
-    stopNotifications();
-    updateNotificationButton();
-    toast('Browser notification ও sound বন্ধ হয়েছে।');
-    return;
-  }
-  await enableNotifications();
-}
-
-async function enableNotifications() {
-  if (!('Notification' in window)) return toast('এই Browser Notification API support করে না।');
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return toast('Browser notification permission দেওয়া হয়নি।');
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (AudioCtx) {
-      audioContext = audioContext || new AudioCtx();
-      if (audioContext.state === 'suspended') await audioContext.resume();
-      playChime();
+    if (revision !== authRevision) {
+      return;
     }
-    localStorage.setItem('nf-notifications-enabled', '1');
-    updateNotificationButton();
-    startNotifications();
-    toast('Browser notification ও sound চালু হয়েছে।');
-  } catch (e) { toast('Notification চালু করা যায়নি: ' + e.message); }
-}
 
-function playChime() {
-  if (!audioContext || audioContext.state !== 'running') return;
-  const now = audioContext.currentTime;
-  [880, 1174].forEach((hz, i) => {
-    const osc = audioContext.createOscillator(), gain = audioContext.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = hz;
-    gain.gain.setValueAtTime(0.0001, now + i * .13);
-    gain.gain.exponentialRampToValueAtTime(.12, now + i * .13 + .025);
-    gain.gain.exponentialRampToValueAtTime(.0001, now + i * .13 + .22);
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.start(now + i * .13);
-    osc.stop(now + i * .13 + .24);
-  });
-}
+  } catch (error) {
+    console.error(
+      '[AUTH STATE ERROR]',
+      error
+    );
 
-function showBrowserNotification(item) {
-  if (Notification.permission !== 'granted') return;
-  const n = new Notification(item.title, { body: item.body, tag: `nf-${item.type}-${item.id}`, renotify: false });
-  n.onclick = () => { window.focus(); go(item.type === 'order' ? 'orders' : 'bot-chats'); n.close(); };
-  playChime();
-}
-
-async function pollNotifications() {
-  try {
-    const d = await api(`/api/bot/notifications?since=${notificationCursor}`);
-    for (const item of d.items || []) { showBrowserNotification(item); toast(`${item.title}: ${item.body}`); }
-    notificationCursor = Math.max(notificationCursor, Number(d.cursor) || notificationCursor, Date.now() - 1000);
-  } catch (e) { /* retried next poll */ }
-}
-
-function startNotifications() {
-  stopNotifications();
-  notificationCursor = Date.now();
-  updateNotificationButton();
-  if ('Notification' in window && localStorage.getItem('nf-notifications-enabled') === '1'
-    && Notification.permission === 'granted') {
-    pollNotifications();
-    notificationTimer = setInterval(pollNotifications, 15000);
+    if (revision === authRevision) {
+      renderFatalError(
+        'Unable to initialize the admin application.'
+      );
+    }
   }
 }
 
-function stopNotifications() { if (notificationTimer) clearInterval(notificationTimer); notificationTimer = null; }
+// ========================================
+// Queue Authentication Changes
+// ========================================
 
-async function start() {
-  const token = localStorage.getItem('nf-token');
-  if (!token) {
-    renderLogin(app, { onLogin: async t => { localStorage.setItem('nf-token', t); setToken(t); await start(); } });
+function queueAuthentication(state) {
+  const revision = ++authRevision;
+
+  authQueue = authQueue
+    .then(() => {
+      if (revision !== authRevision) {
+        return;
+      }
+
+      return handleAuthentication(
+        state,
+        revision
+      );
+    })
+    .catch(error => {
+      console.error(
+        '[AUTH QUEUE ERROR]',
+        error
+      );
+    });
+
+  return authQueue;
+}
+
+// ========================================
+// Application Initialization
+// ========================================
+
+function initializeApplication() {
+  if (appInitialized) {
     return;
   }
-  setToken(token);
-  try {
-    const me = await api('/api/auth/me');
-    user = me;
-    current = location.hash.slice(1) || 'dashboard';
-    if (!nav.some(x => x[0] === current)) current = 'dashboard';
-    layout();
-    startNotifications();
-  } catch {
-    stopNotifications();
-    localStorage.removeItem('nf-token');
-    renderLogin(app, { onLogin: async t => { localStorage.setItem('nf-token', t); setToken(t); await start(); } });
+
+  if (!app) {
+    console.error(
+      'Application root #app was not found.'
+    );
+
+    return;
   }
+
+  appInitialized = true;
+
+  loadAdminStylesheet();
+
+  app.replaceChildren(
+    createElement('div', {
+      className: 'app-loading',
+      text: 'Loading application...'
+    })
+  );
+
+  stopAuthObserver = watchAuthentication(
+    queueAuthentication
+  );
 }
 
-window.addEventListener('hashchange', () => {
-  const p = location.hash.slice(1);
-  if (nav.some(x => x[0] === p)) go(p);
+// ========================================
+// Programmatic Navigation
+// ========================================
+
+export function navigateToPage(pageName, options = {}) {
+  if (!PAGE_TITLES[pageName]) {
+    console.warn(
+      `[APP] Unknown page: ${pageName}`
+    );
+
+    return Promise.resolve(false);
+  }
+
+  updateHeaderTitle(pageName);
+
+  closeSidebar(
+    document.querySelector('.sidebar-toggle')
+  );
+
+  return navigateTo(
+    pageName,
+    options
+  );
+}
+
+// ========================================
+// Application Cleanup
+// ========================================
+
+window.addEventListener('beforeunload', () => {
+  if (typeof stopAuthObserver === 'function') {
+    stopAuthObserver();
+  }
+
+  if (outsideClickHandler) {
+    document.removeEventListener(
+      'click',
+      outsideClickHandler
+    );
+  }
 });
 
-start();
+// ========================================
+// Start Application
+// ========================================
+
+initializeApplication();

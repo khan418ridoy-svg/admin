@@ -1,0 +1,344 @@
+
+/* ========================================
+   COLLECTIONS PAGE
+======================================== */
+
+.collections-page {
+  width: 100%;
+}
+
+/* Collection Toolbar */
+
+.collections-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 15px;
+
+  margin-bottom: 22px;
+}
+
+.collections-toolbar-left,
+.collections-toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Search */
+
+.collection-search {
+  width: 260px;
+  max-width: 100%;
+}
+
+/* Collection Grid */
+
+.collections-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* Collection Card */
+
+.collection-card {
+  display: flex;
+  flex-direction: column;
+
+  min-width: 0;
+  padding: 20px;
+
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+
+  box-shadow: var(--shadow-sm);
+
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.collection-card:hover {
+  transform: translateY(-3px);
+  border-color: #c7d2fe;
+  box-shadow: var(--shadow-md);
+}
+
+/* Card Header */
+
+.collection-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 18px;
+}
+
+/* Collection Icon */
+
+.collection-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 44px;
+
+  flex-shrink: 0;
+
+  color: var(--primary);
+  background: var(--primary-light);
+
+  border-radius: 11px;
+
+  font-size: 19px;
+}
+
+/* Collection Information */
+
+.collection-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.collection-name {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+
+  overflow-wrap: anywhere;
+}
+
+.collection-id {
+  display: block;
+
+  margin-top: 5px;
+
+  color: var(--text-muted);
+  font-size: 11px;
+
+  overflow-wrap: anywhere;
+}
+
+/* Collection Status */
+
+.collection-status {
+  flex-shrink: 0;
+}
+
+/* Card Stats */
+
+.collection-card-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  padding: 14px 0;
+  margin-bottom: 15px;
+
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.collection-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.collection-stat-label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.collection-stat-value {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* Card Footer */
+
+.collection-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  margin-top: auto;
+}
+
+.collection-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Action Buttons */
+
+.collection-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 32px;
+  padding: 6px 10px;
+
+  color: var(--text-secondary);
+  background: var(--surface);
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  font-size: 11px;
+  font-weight: 600;
+
+  transition: var(--transition);
+}
+
+.collection-action-btn:hover {
+  color: var(--primary);
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.collection-action-btn.danger:hover {
+  color: var(--danger);
+  background: var(--danger-light);
+  border-color: var(--danger);
+}
+
+/* Collection View Button */
+
+.collection-view-btn {
+  color: var(--primary);
+  background: var(--primary-light);
+  border-color: transparent;
+}
+
+.collection-view-btn:hover {
+  color: #fff;
+  background: var(--primary);
+}
+
+/* Collection Description */
+
+.collection-description {
+  margin-top: 8px;
+
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Collection Empty State */
+
+.collections-empty {
+  grid-column: 1 / -1;
+  padding: 45px 20px;
+
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ========================================
+   COLLECTION DETAILS
+======================================== */
+
+.collection-details {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.collection-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.collection-details-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.collection-details-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ========================================
+   RESPONSIVE
+======================================== */
+
+@media (max-width: 1100px) {
+
+  .collections-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+
+  .collections-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .collections-toolbar-left,
+  .collections-toolbar-right {
+    width: 100%;
+  }
+
+  .collection-search {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+
+  .collections-grid {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
+  .collection-card {
+    padding: 16px;
+  }
+
+  .collection-card-header {
+    gap: 9px;
+  }
+
+  .collection-name {
+    font-size: 15px;
+  }
+
+  .collection-card-footer {
+    align-items: stretch;
+  }
+
+  .collection-card-actions {
+    width: 100%;
+  }
+
+  .collection-card-actions .btn,
+  .collection-card-actions button {
+    flex: 1;
+  }
+}

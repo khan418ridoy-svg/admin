@@ -1,256 +1,400 @@
-/* ============================================
-   GLOBAL RESPONSIVE - Premium Mobile UI
-   ============================================ */
 
-/* --- টোকেন --- */
-:root {
-  --m-radius: 16px;
-  --m-radius-sm: 12px;
-  --m-shadow-sm: 0 1px 2px rgba(16,24,40,.04), 0 4px 12px rgba(16,24,40,.05);
-  --m-shadow-md: 0 8px 24px rgba(16,24,40,.10);
-  --m-ease: cubic-bezier(.4, 0, .2, 1);
-  --m-tap: 46px;
-  --m-safe-t: env(safe-area-inset-top, 0px);
-  --m-safe-b: env(safe-area-inset-bottom, 0px);
+/* ========================================
+   RESPONSIVE BREAKPOINTS
+
+   Large Desktop : 1200px+
+   Desktop       : 1024px - 1199px
+   Tablet        : 768px - 1023px
+   Mobile        : 481px - 767px
+   Small Mobile  : 480px and below
+======================================== */
+
+
+/* ========================================
+   TABLET & SMALL DESKTOP
+======================================== */
+
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-width: 230px;
+  }
+
+  .page-content {
+    padding: 22px;
+  }
+
+  .dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .collections-grid,
+  .categories-grid,
+  .subcategories-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-/* --- Tablet View --- */
-@media (max-width: 1000px) {
-  .shell { grid-template-columns: 210px 1fr; }
-  .stats { grid-template-columns: repeat(2, 1fr); }
-  .content { padding: 24px; }
-  .topbar { padding: 0 24px; }
-}
 
-/* --- Mobile View --- */
+/* ========================================
+   TABLET
+======================================== */
+
 @media (max-width: 768px) {
-
-  /* ১. বেসিক লেআউট */
-  html { -webkit-text-size-adjust: 100%; }
-  body { overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
-  .shell { display: block; min-height: 100dvh; }
-
-  .topbar {
-    height: calc(60px + var(--m-safe-t));
-    padding: var(--m-safe-t) 16px 0;
-    position: sticky; top: 0; z-index: 50;
-    background: rgba(255,255,255,.85);
-    backdrop-filter: saturate(180%) blur(14px);
-    -webkit-backdrop-filter: saturate(180%) blur(14px);
-    border-bottom: 1px solid var(--line);
+  :root {
+    --header-height: 62px;
   }
-  .mobile-menu {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: var(--m-tap); height: var(--m-tap); border-radius: var(--m-radius-sm);
+
+  /* Layout */
+
+  .admin-layout {
+    min-height: 100vh;
   }
-  .content { padding: 16px 16px calc(24px + var(--m-safe-b)); }
 
-  /* সাইডবার + ব্যাকড্রপ
-     HTML-এ <div class="sidebar-backdrop"></div> দিন, মেনু খুললে দুটোতেই .open ক্লাস দিন */
-  .sidebar {
-    position: fixed; z-index: 100; top: 0; bottom: 0; left: 0;
-    width: min(82vw, 300px);
-    transform: translateX(-105%);
-    transition: transform .32s var(--m-ease);
-    box-shadow: var(--m-shadow-md);
-    padding-top: var(--m-safe-t); padding-bottom: var(--m-safe-b);
-    overflow-y: auto; overscroll-behavior: contain;
-  }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-backdrop {
-    position: fixed; inset: 0; z-index: 90;
-    background: rgba(15,23,42,.45); backdrop-filter: blur(2px);
-    opacity: 0; pointer-events: none; transition: opacity .3s var(--m-ease);
-  }
-  .sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
-
-  /* ২. পেজ হেডার */
-  .page-head { flex-direction: column; align-items: stretch; gap: 12px; }
-  .page-head h1 { font-size: 22px; letter-spacing: -.3px; }
-  .page-head .btn { width: 100%; justify-content: center; }
-
-  /* ৩. গ্রিড, কার্ড, বাটন, ইনপুট */
-  .stats, .two-col, .form-grid { grid-template-columns: 1fr !important; gap: 12px; }
-  .card { padding: 16px; border-radius: var(--m-radius); box-shadow: var(--m-shadow-sm); }
-
-  .btn {
-    min-height: var(--m-tap); border-radius: var(--m-radius-sm);
-    transition: transform .15s var(--m-ease), box-shadow .15s var(--m-ease);
-  }
-  .btn:active { transform: scale(.97); }
-
-  /* ১৬px ফন্ট = iPhone-এ অটো-জুম বন্ধ */
-  input, select, textarea { font-size: 16px; min-height: var(--m-tap); border-radius: var(--m-radius-sm); }
-
-  /* ৪. টুলবার ও সার্চ বার */
-  .toolbar { flex-wrap: wrap; gap: 10px; }
-  .toolbar input, .toolbar select, .toolbar .btn { width: 100%; flex: 1 1 100%; }
-
-  /* ৫. টেবিল → কার্ড (প্রতিটি td-তে data-label দিন) */
-  .table-wrap { overflow: visible !important; width: 100%; }
-  table { display: block; width: 100%; border: none; white-space: normal; }
-  thead { display: none; }
-  tbody { display: grid; grid-template-columns: 1fr; gap: 14px; }
-
-  tr {
-    display: flex; flex-direction: column; gap: 0;
-    padding: 6px 16px; background: #fff;
-    border: 1px solid var(--line); border-radius: var(--m-radius);
-    box-shadow: var(--m-shadow-sm); overflow: hidden; position: relative;
-  }
-  td {
-    display: flex; flex-direction: row; align-items: center;
-    justify-content: space-between; gap: 16px;
-    padding: 12px 0; border: none; font-size: 14px;
-    border-bottom: 1px dashed var(--line); text-align: right;
-  }
-  td:last-child { border-bottom: none; }
-  td::before {
-    content: attr(data-label); flex-shrink: 0; text-align: left;
-    font-size: 11px; font-weight: 700; color: var(--muted);
-    text-transform: uppercase; letter-spacing: .6px;
-  }
-  /* প্রথম সেল = কার্ডের হেডার */
-  td:first-child {
-    justify-content: flex-start; text-align: left;
-    padding: 14px 0; border-bottom: 1px solid var(--line);
-  }
-  td:first-child::before { display: none; }
-  /* অ্যাকশন সেল (class="actions" দিন) = পুরো প্রস্থ */
-  td.actions { flex-direction: column; align-items: stretch; text-align: left; gap: 8px; }
-  td.actions::before { display: none; }
-
-  /* ৬. প্রোডাক্ট টেবিল */
-  .product-cell { flex-direction: row; align-items: center; gap: 12px; }
-  .thumb { width: 60px; height: 60px; border-radius: var(--m-radius-sm); object-fit: cover; }
-  .product-status-select { width: 100%; }
-
-  /* ৭. অর্ডার স্ট্যাটাস কন্ট্রোল */
-  .order-status-controls { width: 100%; max-width: 100%; margin-top: 4px; }
-
-  /* ৮. প্রোডাক্ট ফর্ম ও ভ্যারিয়েন্ট */
-  .variant-table { display: block; overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; }
-  .taxonomy-picker, .summary-grid { grid-template-columns: 1fr; gap: 12px; }
-  .section-toolbar { flex-direction: column; align-items: flex-start; gap: 12px; }
-
-  .sticky-save {
-    position: sticky; bottom: 0; z-index: 40;
-    display: flex; flex-direction: column; gap: 10px;
-    margin: 16px -16px calc(-24px - var(--m-safe-b));
-    padding: 14px 16px calc(14px + var(--m-safe-b));
-    background: rgba(255,255,255,.92);
-    backdrop-filter: saturate(180%) blur(14px);
-    -webkit-backdrop-filter: saturate(180%) blur(14px);
-    border-top: 1px solid var(--line);
-    box-shadow: 0 -8px 24px rgba(16,24,40,.06);
-  }
-  .sticky-save .btn { width: 100%; }
-
-  /* ৯. চ্যাট ও ইনবক্স */
-  .chat-layout { grid-template-columns: 1fr; gap: 12px; }
-  .chat-list { border: 0; padding: 0; }
-  .chat-window {
-    padding: 16px; border-radius: var(--m-radius); background: #f7f8fa;
-    max-height: 70dvh; overflow-y: auto; overscroll-behavior: contain;
-  }
-  .inbox-message {
-    flex-direction: column; align-items: stretch; gap: 12px;
-    padding: 14px; background: #fff; border-radius: var(--m-radius); box-shadow: var(--m-shadow-sm);
-  }
-  .inbox-actions { flex-direction: column; width: 100%; gap: 8px; }
-  .inbox-actions .btn { width: 100%; }
-
-  /* ১০. ডাইনামিক ডেলিভারি রুলস (সেটিংস) */
-  .image-row {
-    flex-direction: column; align-items: stretch; gap: 10px;
-    padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: var(--m-radius);
-  }
-  .image-row > div { flex-direction: column; }
-  .image-row .field { min-width: 100% !important; }
-  .image-row .btn.danger { width: 100%; margin-top: 4px; }
-
-  /* ১১. টপ অ্যাকশন */
-  .top-actions .hide-mobile { display: none; }
-}
-
-/* অ্যানিমেশন কমানো থাকলে বন্ধ */
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
-}
-
-
-
-/* ============================================
-   TABLE TO CARD (Mobile View) - Horizontal fix
-   ============================================ */
-@media (max-width: 768px) {
-  /* ১. টেবিল রেসপন্সিভ করা */
-  .table-wrap, table {
-    display: block;
+  .admin-main {
     width: 100%;
-    min-width: 0 !important; /* ওভারফ্লো বন্ধ করতে */
-    overflow: visible;
+    margin-left: 0;
   }
-  
-  thead { display: none; }
-  tbody { display: flex; flex-direction: column; gap: 16px; }
-  
-  /* ২. প্রতিটি রো-কে কার্ড বানানো */
-  tr {
-    display: flex;
+
+  .page-content {
+    padding: 18px;
+  }
+
+  .page-container {
+    gap: 18px;
+  }
+
+  /* Sidebar */
+
+  .admin-sidebar {
+    transform: translateX(-100%);
+    transition: transform var(--transition);
+  }
+
+  body.sidebar-open .admin-sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-toggle {
+    display: inline-flex;
+  }
+
+  /* Header */
+
+  .admin-header {
+    padding: 0 18px;
+  }
+
+  .header-title {
+    font-size: 17px;
+  }
+
+  /* Page header */
+
+  .page-header {
+    align-items: flex-start;
     flex-direction: column;
-    width: 100%;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  }
-  
-  /* ৩. প্রতিটি সেল-কে লম্বালম্বি (Column) করা */
-  td {
-    display: flex !important;
-    flex-direction: column !important; /* Horizontal থেকে Vertical */
-    align-items: flex-start !important;
-    justify-content: flex-start !important;
-    padding: 10px 0 !important;
-    border-bottom: 1px dashed var(--line) !important;
-    text-align: left !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    gap: 4px;
-  }
-  
-  td:last-child {
-    border-bottom: none !important;
-    padding-bottom: 0 !important;
+    gap: 14px;
   }
 
-  /* ৪. মোবাইলে টেবিলের লেবেল (data-label) দেখানো */
-  td::before {
-    content: attr(data-label);
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+  .page-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
-  /* ৫. অ্যাকশন বাটন পুরো প্রস্থ নেবে */
-  td.actions {
-    align-items: stretch !important;
+  /* Dashboard */
+
+  .dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
   }
-  
-  td.actions .order-status-controls {
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Collections / Categories */
+
+  .collections-grid,
+  .categories-grid,
+  .subcategories-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Forms */
+
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Toolbar */
+
+  .collections-toolbar,
+  .categories-toolbar,
+  .subcategories-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .collection-search,
+  .category-search,
+  .subcategory-search {
     width: 100%;
-    max-width: 100%;
   }
-  
-  td.actions select, 
-  td.actions input, 
-  td.actions textarea, 
-  td.actions button {
-    width: 100% !important;
+}
+
+
+/* ========================================
+   MOBILE
+======================================== */
+
+@media (max-width: 600px) {
+  /* Main layout */
+
+  .page-content {
+    padding: 15px;
+  }
+
+  /* Header */
+
+  .admin-header {
+    padding: 0 14px;
+  }
+
+  .header-title {
+    font-size: 15px;
+  }
+
+  .admin-email {
+    display: none;
+  }
+
+  .logout-button {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* Page header */
+
+  .page-title {
+    font-size: 21px;
+  }
+
+  .page-description {
+    font-size: 12px;
+  }
+
+  .page-actions {
+    gap: 8px;
+  }
+
+  .page-actions .btn {
+    flex: 1;
+  }
+
+  /* Dashboard */
+
+  .dashboard-stats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 15px;
+  }
+
+  /* Cards */
+
+  .collections-grid,
+  .categories-grid,
+  .subcategories-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-card,
+  .category-card,
+  .subcategory-card {
+    padding: 15px;
+  }
+
+  /* Toolbars */
+
+  .collections-toolbar,
+  .categories-toolbar,
+  .subcategories-toolbar {
+    gap: 12px;
+  }
+
+  .collections-toolbar-left,
+  .categories-toolbar-left,
+  .subcategories-toolbar-left,
+  .collections-toolbar-right,
+  .categories-toolbar-right,
+  .subcategories-toolbar-right {
+    width: 100%;
+  }
+
+  /* Forms */
+
+  .form-grid,
+  .form-grid.three-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .form-section {
+    padding: 15px;
+  }
+
+  /* Tables */
+
+  .table-container {
+    border-radius: var(--radius-md);
+  }
+
+  .data-table {
+    min-width: 600px;
+  }
+
+  /* Modals */
+
+  .modal-overlay {
+    padding: 0;
+  }
+
+  .modal {
+    max-height: 90vh;
+  }
+}
+
+
+/* ========================================
+   SMALL MOBILE
+======================================== */
+
+@media (max-width: 480px) {
+  :root {
+    --header-height: 58px;
+  }
+
+  .page-content {
+    padding: 12px;
+  }
+
+  .admin-header {
+    padding: 0 12px;
+  }
+
+  .header-title {
+    font-size: 14px;
+  }
+
+  .page-title {
+    font-size: 19px;
+  }
+
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-actions .btn {
+    width: 100%;
+  }
+
+  .stat-value {
+    font-size: 21px;
+  }
+
+  .dashboard-panel {
+    padding: 14px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .form-section {
+    padding: 13px;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .form-actions .btn {
+    width: 100%;
+  }
+
+  .table-pagination {
+    gap: 10px;
+  }
+
+  .toast-container {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .toast {
+    width: 100%;
+  }
+}
+
+
+/* ========================================
+   LANDSCAPE MOBILE
+======================================== */
+
+@media (max-width: 768px) and (orientation: landscape) {
+  .modal {
+    max-height: 85vh;
+  }
+
+  .modal-body {
+    overflow-y: auto;
+  }
+}
+
+
+/* ========================================
+   TOUCH DEVICE
+======================================== */
+
+@media (hover: none) and (pointer: coarse) {
+  .btn,
+  .sidebar-link,
+  .table-action-btn,
+  .subcategory-action-btn,
+  .collection-action-btn,
+  .category-action-btn {
+    min-height: 38px;
+  }
+
+  .table-action-btn,
+  .subcategory-action-btn,
+  .collection-action-btn,
+  .category-action-btn {
+    min-width: 38px;
+  }
+}
+
+
+/* ========================================
+   REDUCED MOTION
+======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

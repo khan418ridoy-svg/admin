@@ -1,63 +1,128 @@
-/* ============================================
-   DASHBOARD - Recent Orders mobile card grid
-   ============================================ */
+/* ========================================
+   Variables
+   ======================================== */
 
-@media (max-width: 768px) {
-  .grid.two-col > article:first-child .table-wrap {
-    overflow: visible;
-  }
+:root {
+  --color-bg: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-text: #1f2937;
+  --color-text-muted: #6b7280;
+  --color-primary: #4f46e5;
+  --color-primary-soft: #eef2ff;
+  --color-border: #e5e7eb;
 
-  .grid.two-col > article:first-child table {
-    display: block;
-    width: 100%;
-  }
+  --radius: 12px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.1);
 
-  .grid.two-col > article:first-child thead {
-    display: none;
-  }
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+}
 
-  .grid.two-col > article:first-child tbody {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
+/* ========================================
+   Card
+   ======================================== */
 
-  .grid.two-col > article:first-child tr[data-order-row] {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 15px;
-    background: #fff;
-    border: 1px solid #e5e9f2;
-    border-radius: 14px;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, .04);
-  }
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-lg);
+}
 
-  .grid.two-col > article:first-child td {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    padding: 5px;
-    border: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
+/* ========================================
+   Page Layout
+   ======================================== */
 
-  .grid.two-col > article:first-child td:nth-child(1),
-  .grid.two-col > article:first-child td:nth-child(7) {
-    grid-column: 1 / -1;
-  }
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  color: var(--color-text);
+}
 
-  .grid.two-col > article:first-child td:nth-child(1)::before { content: "Order"; }
-  .grid.two-col > article:first-child td:nth-child(2)::before { content: "Customer"; }
-  .grid.two-col > article:first-child td:nth-child(3)::before { content: "Channel"; }
-  .grid.two-col > article:first-child td:nth-child(4)::before { content: "Total"; }
-  .grid.two-col > article:first-child td:nth-child(5)::before { content: "Status"; }
-  .grid.two-col > article:first-child td:nth-child(6)::before { content: "Verification"; }
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
-  .grid.two-col > article:first-child td::before {
-    color: #8490a5;
-    font-size: 11px;
-    font-weight: 600;
-  }
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.page-description {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+/* ========================================
+   Dashboard Welcome
+   ======================================== */
+
+.dashboard-welcome h3 {
+  margin: 0 0 var(--space-sm);
+  font-size: 1.25rem;
+}
+
+.dashboard-welcome p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+/* ========================================
+   Dashboard Quick Links
+   ======================================== */
+
+.dashboard-quick-links h3 {
+  margin: 0 0 var(--space-md);
+  font-size: 1.15rem;
+}
+
+.dashboard-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-md);
+}
+
+.dashboard-quick-card {
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-lg);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.dashboard-quick-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+}
+
+.dashboard-quick-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.dashboard-quick-card h4 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+}
+
+.dashboard-quick-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
 }

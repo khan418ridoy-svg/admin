@@ -1,12 +1,13 @@
+
 {
-  "name": "nishat-fashion-admin",
+  "name": "nishat-category-admin",
   "version": "1.0.0",
   "private": true,
-  "description": "Nishat Fashion Admin Panel and Messenger order bot on Render",
+  "description": "Nishat Fashion Category Admin Panel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "nodemon server.js",
     "check": "node --check server.js"
   },
   "engines": {
@@ -16,9 +17,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "express-rate-limit": "^7.5.0",
-    "firebase": "^13.2.0",
     "firebase-admin": "^13.0.2",
     "helmet": "^8.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
   }
 }
