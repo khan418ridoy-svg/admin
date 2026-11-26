@@ -40,9 +40,7 @@ function normalizeVersion(value) {
   return version;
 }
 
-async function incrementTaxonomyVersion(transaction, versionRef) {
-  const versionSnapshot = await transaction.get(versionRef);
-
+function incrementTaxonomyVersion(transaction, versionRef, versionSnapshot) {
   const currentVersion = versionSnapshot.exists
     ? Number(versionSnapshot.data().version) || 0
     : 0;
@@ -65,12 +63,6 @@ async function incrementTaxonomyVersion(transaction, versionRef) {
   };
 }
 
-/**
- * Get taxonomy data.
- *
- * If clientVersion matches the current version,
- * taxonomyCollections will not be read.
- */
 export async function getTaxonomy(clientVersion) {
   const requestedVersion = normalizeVersion(clientVersion);
   const versionRef = getVersionRef();
@@ -101,7 +93,9 @@ export async function getTaxonomy(clientVersion) {
       id: document.id,
       ...document.data()
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""))
+    );
 
   return {
     notModified: false,
@@ -111,9 +105,6 @@ export async function getTaxonomy(clientVersion) {
   };
 }
 
-/**
- * Get one collection.
- */
 export async function getCollection(collectionId) {
   const documentRef = getCollectionRef(collectionId);
   const snapshot = await documentRef.get();
@@ -128,9 +119,6 @@ export async function getCollection(collectionId) {
   };
 }
 
-/**
- * Create a new collection.
- */
 export async function createCollection(data) {
   const collection = validateCollection(data);
 
@@ -138,7 +126,9 @@ export async function createCollection(data) {
   const versionRef = getVersionRef();
 
   return db.runTransaction(async (transaction) => {
+    // সব reads আগে করতে হবে
     const existingSnapshot = await transaction.get(documentRef);
+    const versionSnapshot = await transaction.get(versionRef);
 
     if (existingSnapshot.exists) {
       throw createServiceError(
@@ -155,11 +145,13 @@ export async function createCollection(data) {
       updatedAt: now
     };
 
+    // এরপর writes
     transaction.create(documentRef, documentData);
 
-    const metadata = await incrementTaxonomyVersion(
+    const metadata = incrementTaxonomyVersion(
       transaction,
-      versionRef
+      versionRef,
+      versionSnapshot
     );
 
     return {
@@ -173,11 +165,6 @@ export async function createCollection(data) {
   });
 }
 
-/**
- * Update an existing collection.
- *
- * Collection document ID cannot be changed.
- */
 export async function updateCollection(collectionId, data) {
   const id = validateCollectionId(collectionId);
   const updates = validateCollectionUpdate(data);
@@ -186,7 +173,9 @@ export async function updateCollection(collectionId, data) {
   const versionRef = getVersionRef();
 
   return db.runTransaction(async (transaction) => {
+    // সব reads আগে করতে হবে
     const existingSnapshot = await transaction.get(documentRef);
+    const versionSnapshot = await transaction.get(versionRef);
 
     if (!existingSnapshot.exists) {
       throw createServiceError("Collection not found", 404);
@@ -199,11 +188,13 @@ export async function updateCollection(collectionId, data) {
       updatedAt: now
     };
 
+    // এরপর writes
     transaction.update(documentRef, updatedData);
 
-    const metadata = await incrementTaxonomyVersion(
+    const metadata = incrementTaxonomyVersion(
       transaction,
-      versionRef
+      versionRef,
+      versionSnapshot
     );
 
     return {
@@ -218,9 +209,6 @@ export async function updateCollection(collectionId, data) {
   });
 }
 
-/**
- * Deactivate a collection instead of deleting it.
- */
 export async function deactivateCollection(collectionId) {
   const id = validateCollectionId(collectionId);
 
@@ -229,9 +217,6 @@ export async function deactivateCollection(collectionId) {
   });
 }
 
-/**
- * Activate a previously deactivated collection.
- */
 export async function activateCollection(collectionId) {
   const id = validateCollectionId(collectionId);
 
