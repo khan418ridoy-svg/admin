@@ -6,6 +6,8 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import dotenv from "dotenv";
 
+import authRoutes from "./src/auth/auth.routes.js";
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,11 +18,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-// Render বা অন্য reverse proxy-এর পেছনে চললে secure cookie
-// এবং client IP detection-এর জন্য প্রয়োজন হবে।
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
+
+app.disable("x-powered-by");
 
 // Security headers
 app.use(helmet());
@@ -40,8 +42,10 @@ app.get("/health", (req, res) => {
   });
 });
 
-// No physical HTML file.
-// Express সরাসরি browser-এ HTML response পাঠাবে।
+// Authentication API
+app.use("/api/auth", authRoutes);
+
+// Frontend entry point (no physical HTML file)
 app.get("/", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -111,5 +115,6 @@ app.listen(PORT, () => {
   console.log("Fashion Business Admin is running");
   console.log(`Local: http://localhost:${PORT}`);
   console.log(`Health: http://localhost:${PORT}/health`);
+  console.log(`Auth: http://localhost:${PORT}/api/auth`);
   console.log("-----------------------------------");
 });
