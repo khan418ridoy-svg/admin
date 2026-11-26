@@ -6,7 +6,11 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import dotenv from "dotenv";
 
+
 import authRoutes from "./src/auth/auth.routes.js";
+import catalogRoutes from "./src/catalog/catalog.routes.js";
+
+// Authentication API-এর পরে
 
 dotenv.config();
 
@@ -80,6 +84,8 @@ app.get("/api/config/firebase", (req, res) => {
 
 // Authentication API
 app.use("/api/auth", authRoutes);
+
+app.use("/api/catalog", catalogRoutes);
 
 // Frontend shell (no physical HTML file)
 app.get("/", (req, res) => {
