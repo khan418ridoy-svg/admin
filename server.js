@@ -24,28 +24,64 @@ if (process.env.NODE_ENV === "production") {
 
 app.disable("x-powered-by");
 
-// Security headers
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        connectSrc: [
+          "'self'",
+          "https://identitytoolkit.googleapis.com",
+          "https://securetoken.googleapis.com"
+        ]
+      }
+    }
+  })
+);
 
-// Request parsing
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
 
 // Health check
 app.get("/health", (req, res) => {
-  res.status(200).json({
+  res.json({
     success: true,
-    name: "Fashion Business Admin",
     status: "running",
     timestamp: new Date().toISOString()
+  });
+});
+
+// Public Firebase Web SDK configuration
+app.get("/api/config/firebase", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+
+  const config = {
+    apiKey: process.env.FIREBASE_API_KEY,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.FIREBASE_APP_ID
+  };
+
+  if (!config.apiKey || !config.projectId) {
+    return res.status(503).json({
+      success: false,
+      message: "Firebase Web configuration is incomplete"
+    });
+  }
+
+  return res.json({
+    success: true,
+    config
   });
 });
 
 // Authentication API
 app.use("/api/auth", authRoutes);
 
-// Frontend entry point (no physical HTML file)
+// Frontend shell (no physical HTML file)
 app.get("/", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
@@ -54,7 +90,6 @@ app.get("/", (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#ffffff">
   <title>Fashion Business Admin</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -65,7 +100,7 @@ app.get("/", (req, res) => {
 </html>`);
 });
 
-// Frontend static files
+// Static frontend files
 app.use(
   express.static(PUBLIC_DIR, {
     index: false,
@@ -74,7 +109,7 @@ app.use(
   })
 );
 
-// Unknown API route
+// Unknown API
 app.use("/api", (req, res) => {
   res.status(404).json({
     success: false,
@@ -82,7 +117,7 @@ app.use("/api", (req, res) => {
   });
 });
 
-// Unknown route
+// Unknown resource
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -90,7 +125,7 @@ app.use((req, res) => {
   });
 });
 
-// Central error handler
+// Error handler
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
 
@@ -98,9 +133,7 @@ app.use((err, req, res, next) => {
     return next(err);
   }
 
-  const statusCode = Number(err.status) || 500;
-
-  res.status(statusCode).json({
+  res.status(Number(err.status) || 500).json({
     success: false,
     message:
       process.env.NODE_ENV === "production"
@@ -109,12 +142,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log("-----------------------------------");
-  console.log("Fashion Business Admin is running");
-  console.log(`Local: http://localhost:${PORT}`);
+  console.log(`Fashion Admin running: http://localhost:${PORT}`);
   console.log(`Health: http://localhost:${PORT}/health`);
-  console.log(`Auth: http://localhost:${PORT}/api/auth`);
-  console.log("-----------------------------------");
 });
