@@ -9,7 +9,15 @@ import {
   createCollectionHandler,
   updateCollectionHandler,
   deactivateCollectionHandler,
-  activateCollectionHandler
+  activateCollectionHandler,
+  createCategoryHandler,
+  updateCategoryHandler,
+  deactivateCategoryHandler,
+  activateCategoryHandler,
+  createSubcategoryHandler,
+  updateSubcategoryHandler,
+  deactivateSubcategoryHandler,
+  activateSubcategoryHandler
 } from "./catalog.controller.js";
 
 const router = Router();
@@ -17,23 +25,78 @@ const router = Router();
 // সব Catalog API-তে Admin authentication বাধ্যতামূলক
 router.use(requireAdmin);
 
-// Taxonomy
+// ==============================
+// TAXONOMY
+// ==============================
+
 router.get("/", listTaxonomy);
 
-// Collection
-router.get("/:collectionId", getCollectionById);
+// ==============================
+// COLLECTION
+// ==============================
+
 router.post("/", createCollectionHandler);
+
+router.get("/:collectionId", getCollectionById);
+
 router.patch("/:collectionId", updateCollectionHandler);
 
-// Collection status
+router.patch(
+  "/:collectionId/activate",
+  activateCollectionHandler
+);
+
 router.patch(
   "/:collectionId/deactivate",
   deactivateCollectionHandler
 );
 
+// ==============================
+// CATEGORY
+// ==============================
+
+router.post(
+  "/:collectionId/categories",
+  createCategoryHandler
+);
+
 router.patch(
-  "/:collectionId/activate",
-  activateCollectionHandler
+  "/:collectionId/categories/:categoryId",
+  updateCategoryHandler
+);
+
+router.patch(
+  "/:collectionId/categories/:categoryId/activate",
+  activateCategoryHandler
+);
+
+router.patch(
+  "/:collectionId/categories/:categoryId/deactivate",
+  deactivateCategoryHandler
+);
+
+// ==============================
+// SUBCATEGORY
+// ==============================
+
+router.post(
+  "/:collectionId/categories/:categoryId/subcategories",
+  createSubcategoryHandler
+);
+
+router.patch(
+  "/:collectionId/categories/:categoryId/subcategories/:subcategoryId",
+  updateSubcategoryHandler
+);
+
+router.patch(
+  "/:collectionId/categories/:categoryId/subcategories/:subcategoryId/activate",
+  activateSubcategoryHandler
+);
+
+router.patch(
+  "/:collectionId/categories/:categoryId/subcategories/:subcategoryId/deactivate",
+  deactivateSubcategoryHandler
 );
 
 export default router;

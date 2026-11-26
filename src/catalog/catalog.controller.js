@@ -8,6 +8,15 @@ import {
   activateCollection
 } from "./catalog.service.js";
 
+import {
+  createCategory,
+  updateCategory,
+  setCategoryActive,
+  createSubcategory,
+  updateSubcategory,
+  setSubcategoryActive
+} from "./catalog.nested.service.js";
+
 function sendError(res, error) {
   const status = Number(error.status) || 500;
 
@@ -24,69 +33,26 @@ function sendError(res, error) {
   });
 }
 
-/**
- * GET /api/catalog
- *
- * Query:
- * ?version=6
- */
+function sendSuccess(res, result, message = "Operation successful", status = 200) {
+  return res.status(status).json({
+    success: true,
+    message,
+    ...result
+  });
+}
+
+// ==============================
+// TAXONOMY
+// ==============================
+
 export async function listTaxonomy(req, res) {
   try {
-    const version = req.query.version;
-
-    const result = await getTaxonomy(version);
+    const result = await getTaxonomy(req.query.version);
 
     res.setHeader("Cache-Control", "no-store");
 
-    if (result.notModified) {
-      return res.status(200).json({
-        success: true,
-        notModified: true,
-        version: result.version,
-        updatedAt: result.updatedAt
-      });
-    }
-
     return res.status(200).json({
       success: true,
-      notModified: false,
-      version: result.version,
-      updatedAt: result.updatedAt,
-      collections: result.collections
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-}
-
-/**
- * GET /api/catalog/:collectionId
- */
-export async function getCollectionById(req, res) {
-  try {
-    const collection = await getCollection(
-      req.params.collectionId
-    );
-
-    return res.status(200).json({
-      success: true,
-      collection
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-}
-
-/**
- * POST /api/catalog
- */
-export async function createCollectionHandler(req, res) {
-  try {
-    const result = await createCollection(req.body);
-
-    return res.status(201).json({
-      success: true,
-      message: "Collection created successfully",
       ...result
     });
   } catch (error) {
@@ -94,9 +60,37 @@ export async function createCollectionHandler(req, res) {
   }
 }
 
-/**
- * PATCH /api/catalog/:collectionId
- */
+// ==============================
+// COLLECTION
+// ==============================
+
+export async function getCollectionById(req, res) {
+  try {
+    const collection = await getCollection(
+      req.params.collectionId
+    );
+
+    return sendSuccess(res, { collection });
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function createCollectionHandler(req, res) {
+  try {
+    const result = await createCollection(req.body);
+
+    return sendSuccess(
+      res,
+      result,
+      "Collection created successfully",
+      201
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
 export async function updateCollectionHandler(req, res) {
   try {
     const result = await updateCollection(
@@ -104,49 +98,199 @@ export async function updateCollectionHandler(req, res) {
       req.body
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Collection updated successfully",
-      ...result
-    });
+    return sendSuccess(
+      res,
+      result,
+      "Collection updated successfully"
+    );
   } catch (error) {
     return sendError(res, error);
   }
 }
 
-/**
- * PATCH /api/catalog/:collectionId/deactivate
- */
 export async function deactivateCollectionHandler(req, res) {
   try {
     const result = await deactivateCollection(
       req.params.collectionId
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Collection deactivated successfully",
-      ...result
-    });
+    return sendSuccess(
+      res,
+      result,
+      "Collection deactivated successfully"
+    );
   } catch (error) {
     return sendError(res, error);
   }
 }
 
-/**
- * PATCH /api/catalog/:collectionId/activate
- */
 export async function activateCollectionHandler(req, res) {
   try {
     const result = await activateCollection(
       req.params.collectionId
     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Collection activated successfully",
-      ...result
-    });
+    return sendSuccess(
+      res,
+      result,
+      "Collection activated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+// ==============================
+// CATEGORY
+// ==============================
+
+export async function createCategoryHandler(req, res) {
+  try {
+    const result = await createCategory(
+      req.params.collectionId,
+      req.body
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Category created successfully",
+      201
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function updateCategoryHandler(req, res) {
+  try {
+    const result = await updateCategory(
+      req.params.collectionId,
+      req.params.categoryId,
+      req.body
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Category updated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function deactivateCategoryHandler(req, res) {
+  try {
+    const result = await setCategoryActive(
+      req.params.collectionId,
+      req.params.categoryId,
+      false
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Category deactivated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function activateCategoryHandler(req, res) {
+  try {
+    const result = await setCategoryActive(
+      req.params.collectionId,
+      req.params.categoryId,
+      true
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Category activated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+// ==============================
+// SUBCATEGORY
+// ==============================
+
+export async function createSubcategoryHandler(req, res) {
+  try {
+    const result = await createSubcategory(
+      req.params.collectionId,
+      req.params.categoryId,
+      req.body
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Subcategory created successfully",
+      201
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function updateSubcategoryHandler(req, res) {
+  try {
+    const result = await updateSubcategory(
+      req.params.collectionId,
+      req.params.categoryId,
+      req.params.subcategoryId,
+      req.body
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Subcategory updated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function deactivateSubcategoryHandler(req, res) {
+  try {
+    const result = await setSubcategoryActive(
+      req.params.collectionId,
+      req.params.categoryId,
+      req.params.subcategoryId,
+      false
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Subcategory deactivated successfully"
+    );
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function activateSubcategoryHandler(req, res) {
+  try {
+    const result = await setSubcategoryActive(
+      req.params.collectionId,
+      req.params.categoryId,
+      req.params.subcategoryId,
+      true
+    );
+
+    return sendSuccess(
+      res,
+      result,
+      "Subcategory activated successfully"
+    );
   } catch (error) {
     return sendError(res, error);
   }
