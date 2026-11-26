@@ -5,11 +5,19 @@ import {
   logoutAdmin
 } from "./auth/auth-client.js";
 
+import {
+  renderCatalogPage
+} from "./assets/js/pages/catalog/index.js";
+
 const app = document.getElementById("app");
 
 if (!app) {
   throw new Error("App root element not found");
 }
+
+// ==============================
+// LOADING
+// ==============================
 
 function renderLoading() {
   app.innerHTML = `
@@ -24,10 +32,15 @@ function renderLoading() {
   `;
 }
 
+// ==============================
+// LOGIN
+// ==============================
+
 function renderLogin(errorMessage = "") {
   app.innerHTML = `
     <main class="auth-page">
       <section class="auth-card">
+
         <div class="brand-mark">F</div>
 
         <div class="auth-heading">
@@ -39,8 +52,10 @@ function renderLogin(errorMessage = "") {
         </div>
 
         <form id="login-form" class="login-form">
+
           <div class="form-group">
             <label for="email">Email address</label>
+
             <input
               id="email"
               name="email"
@@ -89,11 +104,13 @@ function renderLogin(errorMessage = "") {
             <span class="button-label">Sign in</span>
             <span class="button-loader"></span>
           </button>
+
         </form>
 
         <p class="auth-footer">
           Secure administrator access
         </p>
+
       </section>
     </main>
   `;
@@ -114,6 +131,7 @@ function renderLogin(errorMessage = "") {
 
     passwordInput.type = isPassword ? "text" : "password";
     toggleButton.textContent = isPassword ? "Hide" : "Show";
+
     toggleButton.setAttribute(
       "aria-label",
       isPassword ? "Hide password" : "Show password"
@@ -129,104 +147,150 @@ function renderLogin(errorMessage = "") {
     const password = passwordInput.value;
 
     if (!email || !password) {
-      errorElement.textContent = "Enter your email and password.";
+      errorElement.textContent =
+        "Enter your email and password.";
+
       return;
     }
 
     loginButton.disabled = true;
     loginButton.classList.add("is-loading");
-    loginButton.querySelector(".button-label").textContent = "Signing in...";
+
+    loginButton.querySelector(".button-label").textContent =
+      "Signing in...";
 
     try {
       const admin = await loginAdmin(email, password);
 
-      renderAuthenticated(admin);
+      await renderAuthenticated(admin);
+
     } catch (error) {
       errorElement.textContent =
         error.message || "Unable to sign in. Please try again.";
 
       loginButton.disabled = false;
       loginButton.classList.remove("is-loading");
-      loginButton.querySelector(".button-label").textContent = "Sign in";
+
+      loginButton.querySelector(".button-label").textContent =
+        "Sign in";
+
       passwordInput.value = "";
       passwordInput.focus();
     }
   });
 }
 
-function renderAuthenticated(admin) {
+// ==============================
+// AUTHENTICATED ADMIN PANEL
+// ==============================
+
+async function renderAuthenticated(admin) {
   app.innerHTML = `
-    <main class="auth-page">
-      <section class="auth-card success-card">
-        <div class="success-icon">✓</div>
+    <div class="admin-app">
 
-        <p class="eyebrow">AUTHENTICATED</p>
-        <h1>Login successful</h1>
+      <header class="admin-topbar">
 
-        <p class="auth-subtitle">
-          Your administrator session is active.
-        </p>
+        <div class="admin-brand">
+          <div class="brand-mark">F</div>
 
-        <div class="admin-info">
-          <div class="admin-info-row">
-            <span>Admin email</span>
-            <strong id="admin-email"></strong>
-          </div>
-
-          <div class="admin-info-row">
-            <span>Admin UID</span>
-            <strong id="admin-uid"></strong>
-          </div>
-
-          <div class="admin-info-row">
-            <span>Session</span>
-            <strong class="session-active">Active</strong>
+          <div>
+            <strong>Fashion Admin</strong>
+            <span>Management Panel</span>
           </div>
         </div>
 
-        <p
-          id="logout-error"
-          class="form-message error-message"
-          role="alert"
-        ></p>
+        <div class="admin-topbar-actions">
 
-        <button
-          type="button"
-          id="logout-button"
-          class="secondary-button"
-        >
-          Sign out
-        </button>
-      </section>
-    </main>
+          <div class="admin-profile">
+            <span class="admin-avatar">A</span>
+
+            <div>
+              <strong id="admin-email"></strong>
+              <span>Administrator</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="logout-button"
+            class="secondary-button"
+          >
+            Sign out
+          </button>
+
+        </div>
+
+      </header>
+
+      <main id="catalog-root" class="admin-main"></main>
+
+    </div>
   `;
 
   document.getElementById("admin-email").textContent =
-    admin.email || "Not available";
-
-  document.getElementById("admin-uid").textContent =
-    admin.uid || "Not available";
+    admin.email || "Administrator";
 
   const logoutButton = document.getElementById("logout-button");
-  const logoutError = document.getElementById("logout-error");
 
   logoutButton.addEventListener("click", async () => {
     logoutButton.disabled = true;
     logoutButton.textContent = "Signing out...";
-    logoutError.textContent = "";
 
     try {
       await logoutAdmin();
       renderLogin();
+
     } catch (error) {
-      logoutError.textContent =
-        error.message || "Unable to sign out.";
+      alert(error.message || "Unable to sign out.");
 
       logoutButton.disabled = false;
       logoutButton.textContent = "Sign out";
     }
   });
+
+  // Open Catalog page after successful authentication
+  const catalogRoot = document.getElementById("catalog-root");
+
+  try {
+    await renderCatalogPage(catalogRoot);
+
+  } catch (error) {
+    console.error("Catalog page error:", error);
+
+    catalogRoot.innerHTML = `
+      <section class="catalog-empty">
+        <h2>Unable to load Catalog</h2>
+        <p>${escapeHTML(error.message)}</p>
+
+        <button
+          type="button"
+          class="secondary-button"
+          onclick="location.reload()"
+        >
+          Reload page
+        </button>
+      </section>
+    `;
+  }
 }
+
+// ==============================
+// HTML ESCAPE
+// ==============================
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char]);
+}
+
+// ==============================
+// INITIALIZE
+// ==============================
 
 async function initializeApp() {
   renderLoading();
@@ -235,12 +299,17 @@ async function initializeApp() {
     const admin = await getCurrentAdmin();
 
     if (admin) {
-      renderAuthenticated(admin);
+      await renderAuthenticated(admin);
     } else {
       renderLogin();
     }
-  } catch {
-    renderLogin("Unable to verify your session. Please try again.");
+
+  } catch (error) {
+    console.error("Session verification failed:", error);
+
+    renderLogin(
+      "Unable to verify your session. Please sign in again."
+    );
   }
 }
 
