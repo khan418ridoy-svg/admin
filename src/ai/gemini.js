@@ -4,6 +4,7 @@
  *
  * Responsibilities:
  * - Gemini API key management
+ * - Automatic text model discovery
  * - Model fallback
  * - API request handling
  * - Retry handling
@@ -17,8 +18,20 @@ const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
 const REQUEST_TIMEOUT_MS = 30000;
-
 const MAX_OUTPUT_TOKENS = 4096;
+const MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
+const MAX_MODEL_PAGES = 100;
+
+let modelCache = {
+  expiresAt: 0,
+  models: null
+};
+
+let modelDiscoveryPromise = null;
+
+// --------------------------------------------------
+// ERROR
+// --------------------------------------------------
 
 function createGeminiError(
   message,
@@ -32,6 +45,10 @@ function createGeminiError(
 
   return error;
 }
+
+// --------------------------------------------------
+// API KEYS
+// --------------------------------------------------
 
 function parseList(value) {
   if (!value || typeof value !== "string") {
@@ -48,19 +65,6 @@ function parseList(value) {
   ];
 }
 
-/**
- * API Keys
- *
- * Supported:
- *
- * GEMINI_API_KEYS=key1,key2,key3
- *
- * Or:
- *
- * GEMINI_API_KEY_1=key1
- * GEMINI_API_KEY_2=key2
- * GEMINI_API_KEY_3=key3
- */
 function getApiKeys() {
   const keys = [
     ...parseList(process.env.GEMINI_API_KEYS)
@@ -82,7 +86,7 @@ function getApiKeys() {
 
   const uniqueKeys = [...new Set(keys)];
 
-  if (uniqueKeys.length === 0) {
+  if (!uniqueKeys.length) {
     throw createGeminiError(
       "No Gemini API keys configured",
       503
@@ -92,29 +96,237 @@ function getApiKeys() {
   return uniqueKeys;
 }
 
-/**
- * Models
- *
- * Configure model priority in .env:
- *
- * GEMINI_MODELS=model-one,model-two,model-three
- *
- * The first available model is tried first.
- */
-function getModels() {
-  const models = parseList(
-    process.env.GEMINI_MODELS
-  );
+// --------------------------------------------------
+// HTTP JSON
+// --------------------------------------------------
 
-  if (models.length === 0) {
+async function fetchJson(url, apiKey) {
+  let response;
+
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "x-goog-api-key": apiKey
+      },
+      signal: AbortSignal.timeout(
+        REQUEST_TIMEOUT_MS
+      )
+    });
+  } catch (error) {
     throw createGeminiError(
-      "GEMINI_MODELS is not configured",
-      503
+      "Unable to connect to Gemini API",
+      503,
+      {
+        retryable: true
+      }
+    );
+  }
+
+  const responseText = await response.text();
+
+  let data;
+
+  try {
+    data = responseText
+      ? JSON.parse(responseText)
+      : {};
+  } catch {
+    throw createGeminiError(
+      "Gemini returned invalid JSON",
+      502,
+      {
+        retryable: true
+      }
+    );
+  }
+
+  if (!response.ok) {
+    throw createGeminiError(
+      data?.error?.message ||
+        "Gemini API request failed",
+      response.status,
+      {
+        retryable: shouldRetryStatus(
+          response.status
+        )
+      }
+    );
+  }
+
+  return data;
+}
+
+// --------------------------------------------------
+// AUTOMATIC MODEL DISCOVERY
+// --------------------------------------------------
+
+async function discoverModelsForKey(apiKey, keyIndex) {
+  const discovered = [];
+
+  let pageToken = "";
+  const usedTokens = new Set();
+
+  for (
+    let page = 0;
+    page < MAX_MODEL_PAGES;
+    page++
+  ) {
+    const params = new URLSearchParams({
+      pageSize: "1000"
+    });
+
+    if (pageToken) {
+      params.set("pageToken", pageToken);
+    }
+
+    const url =
+      `${GEMINI_API_BASE}?${params.toString()}`;
+
+    const data = await fetchJson(url, apiKey);
+
+    const models = Array.isArray(data.models)
+      ? data.models
+      : [];
+
+    for (const item of models) {
+      const methods = Array.isArray(
+        item.supportedGenerationMethods
+      )
+        ? item.supportedGenerationMethods
+        : [];
+
+      // Only text-generation capable models.
+      if (!methods.includes("generateContent")) {
+        continue;
+      }
+
+      if (typeof item.name !== "string") {
+        continue;
+      }
+
+      const model = item.name.replace(
+        /^models\//,
+        ""
+      );
+
+      if (!model) {
+        continue;
+      }
+
+      discovered.push({
+        model,
+        keyIndex
+      });
+    }
+
+    const nextToken = data.nextPageToken;
+
+    if (!nextToken) {
+      break;
+    }
+
+    if (usedTokens.has(nextToken)) {
+      break;
+    }
+
+    usedTokens.add(nextToken);
+    pageToken = nextToken;
+  }
+
+  return discovered;
+}
+
+async function discoverTextModels(apiKeys) {
+  const modelMap = new Map();
+  const discoveryErrors = [];
+
+  for (
+    let index = 0;
+    index < apiKeys.length;
+    index++
+  ) {
+    try {
+      const discovered =
+        await discoverModelsForKey(
+          apiKeys[index],
+          index + 1
+        );
+
+      for (const item of discovered) {
+        if (!modelMap.has(item.model)) {
+          modelMap.set(item.model, {
+            model: item.model,
+            keyIndexes: []
+          });
+        }
+
+        const entry = modelMap.get(item.model);
+
+        if (!entry.keyIndexes.includes(item.keyIndex)) {
+          entry.keyIndexes.push(item.keyIndex);
+        }
+      }
+    } catch (error) {
+      discoveryErrors.push({
+        keyIndex: index + 1,
+        status: Number(error.status) || 500
+      });
+
+      console.error(
+        `[Gemini] Model discovery failed for key ${index + 1}: ${error.message}`
+      );
+    }
+  }
+
+  const models = [...modelMap.values()];
+
+  if (!models.length) {
+    throw createGeminiError(
+      "No text generation models found from Gemini API",
+      503,
+      {
+        discoveryErrors
+      }
     );
   }
 
   return models;
 }
+
+async function getTextModels(apiKeys) {
+  if (
+    modelCache.models &&
+    Date.now() < modelCache.expiresAt
+  ) {
+    return modelCache.models;
+  }
+
+  if (modelDiscoveryPromise) {
+    return modelDiscoveryPromise;
+  }
+
+  modelDiscoveryPromise = discoverTextModels(
+    apiKeys
+  );
+
+  try {
+    const models = await modelDiscoveryPromise;
+
+    modelCache = {
+      models,
+      expiresAt: Date.now() + MODEL_CACHE_TTL_MS
+    };
+
+    return models;
+  } finally {
+    modelDiscoveryPromise = null;
+  }
+}
+
+// --------------------------------------------------
+// PROMPT VALIDATION
+// --------------------------------------------------
 
 function normalizePrompt(prompt) {
   if (
@@ -136,6 +348,10 @@ function normalizePrompt(prompt) {
 
   return prompt.trim();
 }
+
+// --------------------------------------------------
+// GENERATION CONFIG
+// --------------------------------------------------
 
 function normalizeGenerationConfig(options = {}) {
   const temperature =
@@ -173,13 +389,23 @@ function normalizeGenerationConfig(options = {}) {
   };
 }
 
+// --------------------------------------------------
+// RESPONSE EXTRACTION
+// --------------------------------------------------
+
 function extractText(data) {
   const candidates = data?.candidates;
 
-  if (!Array.isArray(candidates) || !candidates.length) {
+  if (
+    !Array.isArray(candidates) ||
+    !candidates.length
+  ) {
     throw createGeminiError(
       "Gemini returned no candidates",
-      502
+      502,
+      {
+        retryable: true
+      }
     );
   }
 
@@ -195,16 +421,22 @@ function extractText(data) {
   if (!text) {
     throw createGeminiError(
       "Gemini returned an empty response",
-      502
+      502,
+      {
+        retryable: true
+      }
     );
   }
 
   return text;
 }
 
+// --------------------------------------------------
+// RETRY STATUS
+// --------------------------------------------------
+
 function shouldRetryStatus(status) {
   return [
-    400,
     401,
     403,
     404,
@@ -216,6 +448,10 @@ function shouldRetryStatus(status) {
     504
   ].includes(status);
 }
+
+// --------------------------------------------------
+// GENERATE CONTENT
+// --------------------------------------------------
 
 async function requestGemini({
   apiKey,
@@ -250,7 +486,8 @@ async function requestGemini({
           }
         ],
         generationConfig: {
-          temperature: generationConfig.temperature,
+          temperature:
+            generationConfig.temperature,
           maxOutputTokens:
             generationConfig.maxOutputTokens
         }
@@ -258,11 +495,11 @@ async function requestGemini({
     });
   } catch (error) {
     throw createGeminiError(
-      error.name === "TimeoutError" ||
-      error.name === "AbortError"
-        ? "Gemini request timed out"
-        : "Unable to connect to Gemini API",
-      503
+      "Unable to connect to Gemini API",
+      503,
+      {
+        retryable: true
+      }
     );
   }
 
@@ -276,22 +513,24 @@ async function requestGemini({
       : {};
   } catch {
     throw createGeminiError(
-      "Gemini returned an invalid JSON response",
-      502
+      "Gemini returned invalid JSON",
+      502,
+      {
+        retryable: true
+      }
     );
   }
 
   if (!response.ok) {
-    const apiMessage =
-      data?.error?.message ||
-      "Gemini API request failed";
-
     throw createGeminiError(
-      apiMessage,
+      data?.error?.message ||
+        "Gemini API request failed",
       response.status,
       {
         model,
-        retryable: shouldRetryStatus(response.status)
+        retryable: shouldRetryStatus(
+          response.status
+        )
       }
     );
   }
@@ -299,38 +538,38 @@ async function requestGemini({
   return extractText(data);
 }
 
-/**
- * Generate Text
- *
- * Tries:
- * 1. First configured model + first API key
- * 2. Same model + next API key
- * 3. Next model + available API keys
- *
- * Returns generated plain text.
- */
+// --------------------------------------------------
+// MAIN TEXT GENERATION
+// --------------------------------------------------
+
 export async function generateGeminiText(
   prompt,
   options = {}
 ) {
-  const normalizedPrompt = normalizePrompt(prompt);
+  const normalizedPrompt =
+    normalizePrompt(prompt);
 
   const generationConfig =
     normalizeGenerationConfig(options);
 
   const apiKeys = getApiKeys();
-  const models = getModels();
+
+  const models = await getTextModels(apiKeys);
 
   const failures = [];
 
-  for (const model of models) {
-    for (let index = 0; index < apiKeys.length; index++) {
-      const apiKey = apiKeys[index];
+  // Try every discovered text model.
+  // Each model is tried with the API keys
+  // that discovered that model.
+
+  for (const entry of models) {
+    for (const keyIndex of entry.keyIndexes) {
+      const apiKey = apiKeys[keyIndex - 1];
 
       try {
         const result = await requestGemini({
           apiKey,
-          model,
+          model: entry.model,
           prompt: normalizedPrompt,
           generationConfig
         });
@@ -338,25 +577,27 @@ export async function generateGeminiText(
         return {
           success: true,
           text: result,
-          model,
-          keyIndex: index + 1
+          model: entry.model,
+          keyIndex
         };
       } catch (error) {
-        const status = Number(error.status) || 500;
+        const status =
+          Number(error.status) || 500;
 
         failures.push({
-          model,
-          keyIndex: index + 1,
-          status,
-          message: error.message
+          model: entry.model,
+          keyIndex,
+          status
         });
 
         console.error(
-          `[Gemini] Failed: model=${model}, keyIndex=${index + 1}, status=${status}`
+          `[Gemini] Failed: model=${entry.model}, keyIndex=${keyIndex}, status=${status}`
         );
 
-        if (!error.details?.retryable &&
-            !shouldRetryStatus(status)) {
+        if (
+          !error.details?.retryable &&
+          !shouldRetryStatus(status)
+        ) {
           throw error;
         }
       }
@@ -364,11 +605,11 @@ export async function generateGeminiText(
   }
 
   console.error(
-    `[Gemini] All models and API keys failed. Attempts: ${failures.length}`
+    `[Gemini] All discovered models failed. Attempts: ${failures.length}`
   );
 
   throw createGeminiError(
-    "All Gemini models and API keys failed",
+    "All Gemini text models and API keys failed",
     503,
     {
       attempts: failures.length
@@ -376,14 +617,12 @@ export async function generateGeminiText(
   );
 }
 
-/**
- * Check Gemini Configuration
- *
- * Does not expose API keys.
- */
+// --------------------------------------------------
+// CONFIG STATUS
+// --------------------------------------------------
+
 export function getGeminiConfigStatus() {
   let apiKeyCount = 0;
-  let models = [];
 
   try {
     apiKeyCount = getApiKeys().length;
@@ -391,15 +630,10 @@ export function getGeminiConfigStatus() {
     apiKeyCount = 0;
   }
 
-  try {
-    models = getModels();
-  } catch {
-    models = [];
-  }
-
   return {
-    configured: apiKeyCount > 0 && models.length > 0,
+    configured: apiKeyCount > 0,
     apiKeyCount,
-    models
+    modelDiscovery: "automatic",
+    models: []
   };
 }
