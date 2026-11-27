@@ -10,6 +10,12 @@ import {
   updateProductHandler
 } from "./product.controller.js";
 
+import {
+  getProductCostHandler,
+  saveProductCostHandler,
+  deleteProductCostHandler
+} from "./product.cost.controller.js";
+
 const router = Router();
 
 // Protect all Product Catalog routes.
@@ -22,6 +28,18 @@ router.get("/", listProductsHandler);
 // POST /api/products
 // Create a new Product.
 router.post("/", createProductHandler);
+
+// GET /api/products/:productId/cost
+// Get private Product and Variant Cost.
+router.get("/:productId/cost", getProductCostHandler);
+
+// PUT /api/products/:productId/cost
+// Save private Product and Variant Cost.
+router.put("/:productId/cost", saveProductCostHandler);
+
+// DELETE /api/products/:productId/cost
+// Delete private Product and Variant Cost.
+router.delete("/:productId/cost", deleteProductCostHandler);
 
 // GET /api/products/:productId
 // Get Product details.
