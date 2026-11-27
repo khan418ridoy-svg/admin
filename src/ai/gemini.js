@@ -419,8 +419,10 @@ async function testModel({
 // AUTOMATIC MODEL TESTING
 // --------------------------------------------------
 
+
 async function discoverAndTestModels(apiKeys) {
   const modelMap = new Map();
+
   const diagnostics = {
     totalKeys: apiKeys.length,
     successfulKeys: 0,
@@ -433,8 +435,7 @@ async function discoverAndTestModels(apiKeys) {
     modelResults: []
   };
 
-  // Step 1: Discover models for every API key.
-
+  // Step 1: Discover models from all API keys.
   for (
     let index = 0;
     index < apiKeys.length;
@@ -497,22 +498,14 @@ async function discoverAndTestModels(apiKeys) {
     throw createGeminiError(
       "No Gemini text-generation models could be discovered",
       503,
-      {
-        diagnostics
-      }
+      { diagnostics }
     );
   }
 
-  // Step 2: Test every discovered model with
-  // every API key that discovered that model.
-  //
-  // Requests are sequential to reduce API bursts.
-
-  const workingModels = [];
+  // Step 2: Test models one by one.
+  // Stop immediately after the first successful test.
 
   for (const entry of discoveredModels) {
-    const workingKeys = [];
-
     for (const keyIndex of entry.keyIndexes) {
       const apiKey = apiKeys[keyIndex - 1];
 
@@ -523,63 +516,46 @@ async function discoverAndTestModels(apiKeys) {
       });
 
       diagnostics.testedModels++;
-
       diagnostics.modelResults.push(result);
 
       if (result.success) {
-        workingKeys.push({
-          keyIndex,
-          durationMs: result.durationMs
-        });
+        diagnostics.workingModels = 1;
+
+        const workingModel = {
+          model: entry.model,
+          displayName: entry.displayName,
+          description: entry.description,
+          workingKeys: [
+            {
+              keyIndex,
+              durationMs: result.durationMs
+            }
+          ]
+        };
+
+        console.log(
+          `[Gemini] First working model found. Stopping tests: model=${entry.model}, keyIndex=${keyIndex}`
+        );
+
+        return {
+          workingModels: [workingModel],
+          diagnostics
+        };
       }
-    }
 
-    if (workingKeys.length) {
-      diagnostics.workingModels++;
-
-      workingModels.push({
-        model: entry.model,
-        displayName: entry.displayName,
-        description: entry.description,
-        workingKeys
-      });
-    } else {
       diagnostics.failedModels++;
     }
   }
 
-  if (!workingModels.length) {
-    throw createGeminiError(
-      "No Gemini model passed the real text-generation test",
-      503,
-      {
-        diagnostics
-      }
-    );
-  }
+  // No model passed the real generation test.
 
-  // Faster tested models are tried first.
-  workingModels.sort((a, b) => {
-    const aSpeed = Math.min(
-      ...a.workingKeys.map(item => item.durationMs)
-    );
-
-    const bSpeed = Math.min(
-      ...b.workingKeys.map(item => item.durationMs)
-    );
-
-    return aSpeed - bSpeed;
-  });
-
-  console.log(
-    `[Gemini] Model testing complete: ${diagnostics.workingModels}/${diagnostics.discoveredModels} working models`
+  throw createGeminiError(
+    "No Gemini model passed the real text-generation test",
+    503,
+    { diagnostics }
   );
-
-  return {
-    workingModels,
-    diagnostics
-  };
 }
+
 
 // --------------------------------------------------
 // GET WORKING MODELS
