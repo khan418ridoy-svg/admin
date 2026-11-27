@@ -4,13 +4,20 @@ import { randomBytes } from "node:crypto";
 import { db } from "../config/firebase.js";
 import { PRODUCT_COSTS } from "./product.constants.js";
 
-const PRODUCT_COLLECTION = "products";
-const PRIVATE_COLLECTION = PRODUCT_COSTS.collection;
-const COSTS_FIELD = PRODUCT_COSTS.field;
-const MAX_PRODUCTS_PER_BATCH = PRODUCT_COSTS.batchSize;
+const PRODUCTS_COLLECTION = "products";
+const PRIVATE_COLLECTION = PRODUCT_COSTS.COLLECTION;
+const COSTS_FIELD = PRODUCT_COSTS.FIELD_NAME;
+const MAX_PRODUCTS_PER_BATCH = PRODUCT_COSTS.BATCH_SIZE;
 
-// Keep a safety margin below Firestore's 1 MiB document limit.
+// Firestore limit is 1 MiB.
+// Keep a safety margin for document metadata and field overhead.
 const MAX_DOCUMENT_BYTES = 850 * 1024;
+
+function createCostError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
 
 function validateProductId(productId) {
   if (
@@ -18,19 +25,21 @@ function validateProductId(productId) {
     !productId.trim() ||
     productId.includes("/")
   ) {
-    throw new Error("A valid productId is required.");
+    throw createCostError("A valid productId is required.");
   }
 
   return productId.trim();
 }
 
-function validateCost(cost, fieldName = "cost") {
+function validateCost(cost, fieldName = "Cost Price") {
   if (
     typeof cost !== "number" ||
     !Number.isFinite(cost) ||
     cost < 0
   ) {
-    throw new Error(`${fieldName} must be a valid non-negative number.`);
+    throw createCostError(
+      `${fieldName} must be a valid non-negative number.`
+    );
   }
 
   return cost;
@@ -42,19 +51,24 @@ function validateVariantCosts(variants = {}) {
     typeof variants !== "object" ||
     Array.isArray(variants)
   ) {
-    throw new Error("variants must be an object.");
+    throw createCostError("variants must be an object.");
   }
 
   const validatedVariants = {};
 
   for (const [variantId, variantCost] of Object.entries(variants)) {
-    if (!variantId.trim() || variantId.includes(".")) {
-      throw new Error("Invalid variantId in variant costs.");
+    if (
+      !variantId.trim() ||
+      variantId.includes(".") ||
+      variantId.includes("/") ||
+      ["__proto__", "constructor", "prototype"].includes(variantId)
+    ) {
+      throw createCostError("Invalid variantId in variant costs.");
     }
 
     validatedVariants[variantId] = validateCost(
       variantCost,
-      `Variant cost (${variantId})`
+      `Variant Cost (${variantId})`
     );
   }
 
@@ -63,8 +77,8 @@ function validateVariantCosts(variants = {}) {
 
 function validateCostEntry({ cost, variants = {} }) {
   return {
-    cost: validateCost(cost),
-    variants: validateVariantCosts(variants)
+    [PRODUCT_COSTS.PRODUCT_COST_FIELD]: validateCost(cost),
+    [PRODUCT_COSTS.VARIANT_COST_FIELD]: validateVariantCosts(variants)
   };
 }
 
@@ -86,18 +100,18 @@ function getDocumentSizeBytes(data) {
   return Buffer.byteLength(JSON.stringify(data), "utf8");
 }
 
-function isBatchAvailable(productCosts, nextData) {
+function createRandomBatchId() {
+  return randomBytes(16).toString("hex");
+}
+
+function isBatchAvailable(productCosts, nextBatchData) {
   const productCount = Object.keys(productCosts).length;
 
   if (productCount >= MAX_PRODUCTS_PER_BATCH) {
     return false;
   }
 
-  return getDocumentSizeBytes(nextData) <= MAX_DOCUMENT_BYTES;
-}
-
-function createRandomBatchId() {
-  return randomBytes(16).toString("hex");
+  return getDocumentSizeBytes(nextBatchData) <= MAX_DOCUMENT_BYTES;
 }
 
 async function readAllCostBatches(transaction = null) {
@@ -111,7 +125,7 @@ async function readAllCostBatches(transaction = null) {
 }
 
 /**
- * Get the Cost Price entry for one Product.
+ * Get Cost Price for one Product.
  *
  * Returns:
  * {
@@ -120,7 +134,7 @@ async function readAllCostBatches(transaction = null) {
  *   variants
  * }
  *
- * Returns null when no cost entry exists.
+ * Returns null if no Cost Price exists.
  */
 export async function getProductCost(productId) {
   const validProductId = validateProductId(productId);
@@ -128,15 +142,23 @@ export async function getProductCost(productId) {
 
   for (const batchDoc of batchDocs) {
     const productCosts = getProductCosts(batchDoc.data());
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        productCosts,
+        validProductId
+      )
+    ) {
+      continue;
+    }
+
     const entry = productCosts[validProductId];
 
-    if (entry) {
-      return {
-        productId: validProductId,
-        cost: entry.cost,
-        variants: entry.variants || {}
-      };
-    }
+    return {
+      productId: validProductId,
+      cost: entry[PRODUCT_COSTS.PRODUCT_COST_FIELD],
+      variants: entry[PRODUCT_COSTS.VARIANT_COST_FIELD] || {}
+    };
   }
 
   return null;
@@ -145,10 +167,25 @@ export async function getProductCost(productId) {
 /**
  * Save Product and Variant Cost Prices.
  *
- * Cost data is stored only in:
+ * Firestore structure:
+ *
  * private/{randomBatchId}
  *
- * It is never written to products/{productId}.
+ * {
+ *   productCosts: {
+ *     productId: {
+ *       cost: 300,
+ *       variants: {
+ *         variantId: 200
+ *       }
+ *     }
+ *   },
+ *   updatedAt: Date
+ * }
+ *
+ * Maximum 300 Products per batch.
+ *
+ * Cost Price is never written to products/{productId}.
  */
 export async function saveProductCost({
   productId,
@@ -159,61 +196,61 @@ export async function saveProductCost({
   const costEntry = validateCostEntry({ cost, variants });
 
   const productRef = db
-    .collection(PRODUCT_COLLECTION)
+    .collection(PRODUCTS_COLLECTION)
     .doc(validProductId);
 
   const batchCollection = db.collection(PRIVATE_COLLECTION);
-  const newBatchRef = batchCollection.doc(createRandomBatchId());
 
   return db.runTransaction(async (transaction) => {
-    // All reads must happen before transaction writes.
+    // All transaction reads must happen before writes.
     const productSnapshot = await transaction.get(productRef);
 
     if (!productSnapshot.exists) {
-      throw new Error("Product not found.");
+      throw createCostError("Product not found.", 404);
     }
 
     const batchDocs = await readAllCostBatches(transaction);
 
     let targetBatchRef = null;
-    let targetProductCosts = null;
+    let targetBatchData = null;
 
-    // First, find an existing batch containing this Product.
+    // 1. Find the batch that already contains this Product.
     for (const batchDoc of batchDocs) {
       const batchData = batchDoc.data();
       const productCosts = getProductCosts(batchData);
 
-      if (Object.prototype.hasOwnProperty.call(
-        productCosts,
-        validProductId
-      )) {
-        const nextProductCosts = {
-          ...productCosts,
-          [validProductId]: costEntry
-        };
-
-        const nextBatchData = {
-          ...batchData,
-          [COSTS_FIELD]: nextProductCosts,
-          updatedAt: new Date()
-        };
-
-        if (
-          getDocumentSizeBytes(nextBatchData) >
-          MAX_DOCUMENT_BYTES
-        ) {
-          throw new Error(
-            "Cost Price batch is too large. Reduce variant cost data."
-          );
-        }
-
-        targetBatchRef = batchDoc.ref;
-        targetProductCosts = nextProductCosts;
-        break;
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          productCosts,
+          validProductId
+        )
+      ) {
+        continue;
       }
+
+      const nextProductCosts = {
+        ...productCosts,
+        [validProductId]: costEntry
+      };
+
+      const nextBatchData = {
+        ...batchData,
+        [COSTS_FIELD]: nextProductCosts,
+        updatedAt: new Date()
+      };
+
+      if (getDocumentSizeBytes(nextBatchData) > MAX_DOCUMENT_BYTES) {
+        throw createCostError(
+          "Cost Price batch is too large. Reduce variant cost data."
+        );
+      }
+
+      targetBatchRef = batchDoc.ref;
+      targetBatchData = nextBatchData;
+      break;
     }
 
-    // If Product is not in a batch, find a batch with available space.
+    // 2. If Product is new, find a batch with available space.
     if (!targetBatchRef) {
       for (const batchDoc of batchDocs) {
         const batchData = batchDoc.data();
@@ -230,32 +267,39 @@ export async function saveProductCost({
           updatedAt: new Date()
         };
 
-        if (
-          isBatchAvailable(productCosts, nextBatchData)
-        ) {
+        if (isBatchAvailable(productCosts, nextBatchData)) {
           targetBatchRef = batchDoc.ref;
-          targetProductCosts = nextProductCosts;
+          targetBatchData = nextBatchData;
           break;
         }
       }
     }
 
-    // Create a new random batch when existing batches are full.
+    // 3. If every existing batch is full, create a new random batch.
     if (!targetBatchRef) {
-      targetBatchRef = newBatchRef;
-      targetProductCosts = {
-        [validProductId]: costEntry
-      };
-    }
+      targetBatchRef = batchCollection.doc(createRandomBatchId());
 
-    transaction.set(
-      targetBatchRef,
-      {
-        [COSTS_FIELD]: targetProductCosts,
+      targetBatchData = {
+        [COSTS_FIELD]: {
+          [validProductId]: costEntry
+        },
         updatedAt: new Date()
-      },
-      { merge: true }
-    );
+      };
+
+      if (getDocumentSizeBytes(targetBatchData) > MAX_DOCUMENT_BYTES) {
+        throw createCostError(
+          "Cost Price data exceeds the allowed document size."
+        );
+      }
+
+      // New batch: create prevents accidental overwrite on ID collision.
+      transaction.create(targetBatchRef, targetBatchData);
+    } else {
+      // Replace the complete batch document.
+      // Do not use merge:true because removed nested Variant IDs
+      // must not remain in Firestore.
+      transaction.set(targetBatchRef, targetBatchData);
+    }
 
     return {
       productId: validProductId,
@@ -266,17 +310,17 @@ export async function saveProductCost({
 }
 
 /**
- * Delete Cost Price data for one Product.
+ * Delete Cost Price for one Product.
  *
- * This does not delete the Product itself.
+ * Does not delete the Product document.
  */
 export async function deleteProductCost(productId) {
   const validProductId = validateProductId(productId);
-  const batchCollection = db.collection(PRIVATE_COLLECTION);
 
   return db.runTransaction(async (transaction) => {
     const batchDocs = await readAllCostBatches(transaction);
 
+    // All reads are complete before the first write.
     for (const batchDoc of batchDocs) {
       const batchData = batchDoc.data();
       const productCosts = getProductCosts(batchData);
@@ -296,14 +340,12 @@ export async function deleteProductCost(productId) {
       if (Object.keys(nextProductCosts).length === 0) {
         transaction.delete(batchDoc.ref);
       } else {
-        transaction.set(
-          batchDoc.ref,
-          {
-            [COSTS_FIELD]: nextProductCosts,
-            updatedAt: new Date()
-          },
-          { merge: true }
-        );
+        // Replace the full document to avoid stale nested fields.
+        transaction.set(batchDoc.ref, {
+          ...batchData,
+          [COSTS_FIELD]: nextProductCosts,
+          updatedAt: new Date()
+        });
       }
 
       return {
@@ -320,9 +362,12 @@ export async function deleteProductCost(productId) {
 }
 
 /**
- * Read all Product Cost Price entries.
+ * Read all Product Cost Prices.
  *
- * This function is intended for Admin-only use.
+ * Admin-only use.
+ *
+ * IMPORTANT:
+ * Never expose this result through public Product APIs.
  */
 export async function getAllProductCosts() {
   const batchDocs = await readAllCostBatches();
