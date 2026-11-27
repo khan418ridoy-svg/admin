@@ -142,9 +142,3 @@ export async function updateProductHandler(req, res) {
     return sendError(res, error);
   }
 }
-
-export const PRODUCT_COSTS = {
-  collection: "private",
-  batchSize: 300,
-  field: "productCosts"
-};
