@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 
 import authRoutes from "./src/auth/auth.routes.js";
 import catalogRoutes from "./src/catalog/catalog.routes.js";
+import productRoutes from "./src/product/product.routes.js";
 
 // Authentication API-এর পরে
 
@@ -86,6 +87,10 @@ app.get("/api/config/firebase", (req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use("/api/catalog", catalogRoutes);
+app.use("/api/products", productRoutes);
+
+
+
 
 // Frontend shell (no physical HTML file)
 app.get("/", (req, res) => {
