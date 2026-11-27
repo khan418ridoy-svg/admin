@@ -5,58 +5,60 @@ import {
   deleteProductCost
 } from "./product.cost.service.js";
 
+function sendCostError(res, error, action) {
+  const status = Number(error.status) || 500;
+
+  if (status >= 500) {
+    console.error(`${action} error:`, error);
+  }
+
+  return res.status(status).json({
+    success: false,
+    message:
+      status >= 500
+        ? "Internal server error"
+        : error.message
+  });
+}
+
 /**
  * GET /api/products/:productId/cost
- * একটি Product-এর Cost Price পড়বে।
  */
-export const getProductCostHandler = async (req, res) => {
+export async function getProductCostHandler(req, res) {
   try {
-    const { productId } = req.params;
+    const result = await getProductCost(
+      req.params.productId
+    );
 
-    const result = await getProductCost(productId);
+    res.setHeader("Cache-Control", "no-store");
 
     return res.status(200).json({
       success: true,
       cost: result
     });
   } catch (error) {
-    console.error("Get product cost error:", error);
-
-    const statusCode = error.statusCode || 500;
-
-    return res.status(statusCode).json({
-      success: false,
-      message:
-        statusCode === 500
-          ? "Failed to load product cost."
-          : error.message
-    });
+    return sendCostError(
+      res,
+      error,
+      "Get product cost"
+    );
   }
-};
+}
 
 /**
  * PUT /api/products/:productId/cost
- * Product Cost এবং Variant Cost সংরক্ষণ করবে।
- *
- * Request body:
- * {
- *   "cost": 300,
- *   "variants": {
- *     "variantId_red_m": 200,
- *     "variantId_blue_l": 250
- *   }
- * }
  */
-export const saveProductCostHandler = async (req, res) => {
+export async function saveProductCostHandler(req, res) {
   try {
-    const { productId } = req.params;
     const { cost, variants } = req.body || {};
 
     const result = await saveProductCost({
-      productId,
+      productId: req.params.productId,
       cost,
       variants
     });
+
+    res.setHeader("Cache-Control", "no-store");
 
     return res.status(200).json({
       success: true,
@@ -64,45 +66,35 @@ export const saveProductCostHandler = async (req, res) => {
       cost: result
     });
   } catch (error) {
-    console.error("Save product cost error:", error);
-
-    const statusCode = error.statusCode || 500;
-
-    return res.status(statusCode).json({
-      success: false,
-      message:
-        statusCode === 500
-          ? "Failed to save product cost."
-          : error.message
-    });
+    return sendCostError(
+      res,
+      error,
+      "Save product cost"
+    );
   }
-};
+}
 
 /**
  * DELETE /api/products/:productId/cost
- * একটি Product-এর Cost Price মুছে ফেলবে।
  */
-export const deleteProductCostHandler = async (req, res) => {
+export async function deleteProductCostHandler(req, res) {
   try {
-    const { productId } = req.params;
+    const result = await deleteProductCost(
+      req.params.productId
+    );
 
-    await deleteProductCost(productId);
+    res.setHeader("Cache-Control", "no-store");
 
     return res.status(200).json({
       success: true,
-      message: "Product cost deleted successfully."
+      message: "Product cost deleted successfully.",
+      result
     });
   } catch (error) {
-    console.error("Delete product cost error:", error);
-
-    const statusCode = error.statusCode || 500;
-
-    return res.status(statusCode).json({
-      success: false,
-      message:
-        statusCode === 500
-          ? "Failed to delete product cost."
-          : error.message
-    });
+    return sendCostError(
+      res,
+      error,
+      "Delete product cost"
+    );
   }
-};
+}
