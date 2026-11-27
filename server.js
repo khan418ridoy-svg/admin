@@ -6,12 +6,10 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import dotenv from "dotenv";
 
-
 import authRoutes from "./src/auth/auth.routes.js";
 import catalogRoutes from "./src/catalog/catalog.routes.js";
 import productRoutes from "./src/product/product.routes.js";
-
-// Authentication API-এর পরে
+import aiRoutes from "./src/ai/ai.routes.js";
 
 dotenv.config();
 
@@ -86,11 +84,14 @@ app.get("/api/config/firebase", (req, res) => {
 // Authentication API
 app.use("/api/auth", authRoutes);
 
+// Catalog API
 app.use("/api/catalog", catalogRoutes);
+
+// Product API
 app.use("/api/products", productRoutes);
 
-
-
+// AI API
+app.use("/api/ai", aiRoutes);
 
 // Frontend shell (no physical HTML file)
 app.get("/", (req, res) => {
